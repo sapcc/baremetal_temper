@@ -8,15 +8,9 @@ import (
 	"time"
 
 	"github.com/sapcc/ironic_temper/pkg/config"
+	"github.com/sapcc/ironic_temper/pkg/ironic"
 	"github.com/stmcginnis/gofish"
 )
-
-// BaremetalNode is ...
-type BaremetalNode struct {
-	Manufacturer string
-	Serial       string
-	MACAddress   string
-}
 
 // Node is ...
 type Node struct {
@@ -83,7 +77,7 @@ func (r Redfish) loadNodes() (ips []string, err error) {
 	return
 }
 
-func (r Redfish) loadRedfishInfo(nodeIP string) (bm BaremetalNode, err error) {
+func (r Redfish) loadRedfishInfo(nodeIP string) (i ironic.InspectorCallbackData, err error) {
 	fmt.Println(nodeIP)
 	cfg := gofish.ClientConfig{
 		Endpoint:  fmt.Sprintf("https://%s", nodeIP),
@@ -110,26 +104,27 @@ func (r Redfish) loadRedfishInfo(nodeIP string) (bm BaremetalNode, err error) {
 		if len(n) == 0 {
 			continue
 		}
+		i.Interfaces = make([]ironic.Interface, len(n))
 		f, err := n[0].NetworkDeviceFunctions()
-		bm.MACAddress = f[0].Ethernet.MACAddress
+		i.Interfaces[0].MacAddress = f[0].Ethernet.MACAddress
 		fmt.Println(f[0].Ethernet.MACAddress)
 		fmt.Printf("Chassis: %#v\n\n", chass.Manufacturer)
 	}
 	return
 }
 
-func (r Redfish) createIronicNode(bm BaremetalNode) {
+func (r Redfish) createIronicNode(i ironic.InspectorCallbackData) (err error) {
+	return ironic.CreateIronicNode(i, r.cfg.IronicInspectorCallback)
+}
+
+func (r Redfish) checkIronicNodeCreation(i ironic.InspectorCallbackData) {
 
 }
 
-func (r Redfish) checkIronicNodeCreation(bm BaremetalNode) {
+func (r Redfish) checkIronicNodeExists(i ironic.InspectorCallbackData) {
 
 }
 
-func (r Redfish) checkIronicNodeExists(bm BaremetalNode) {
-
-}
-
-func (r Redfish) updateNetbox(bm BaremetalNode) {
+func (r Redfish) updateNetbox(i ironic.InspectorCallbackData) {
 	// update provision_state
 }
