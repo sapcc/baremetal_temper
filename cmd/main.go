@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/sapcc/ironic_temper/pkg/config"
-	"github.com/sapcc/ironic_temper/pkg/redfish"
+	"github.com/sapcc/ironic_temper/pkg/provision"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -54,6 +54,6 @@ func main() {
 		log.Error(err)
 		os.Exit(0)
 	}
-	r := redfish.New(cfg)
+	r := provision.NewScheduler(cfg)
 	r.Start(ctx, errors)
 }

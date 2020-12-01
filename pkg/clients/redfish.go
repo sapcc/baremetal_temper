@@ -1,4 +1,4 @@
-package ironic
+package clients
 
 import (
 	"fmt"
@@ -6,21 +6,27 @@ import (
 	"github.com/stmcginnis/gofish"
 )
 
-func (n Node) LoadRedfishInfo() (i InspectorCallbackData, err error) {
-	fmt.Println(n.IP)
+type RedfishClient struct {
+	Host string
+	User string
+	Password string
+}
+
+func (r RedfishClient) LoadRedfishInfo(nodeIP string) (i InspectorCallbackData, err error) {
+	fmt.Println(nodeIP)
 	cfg := gofish.ClientConfig{
-		Endpoint:  fmt.Sprintf("https://%s", n.IP),
-		Username:  n.IronicUser,
-		Password:  n.IronicPassword,
+		Endpoint:  fmt.Sprintf("https://%s", nodeIP),
+		Username:  r.User,
+		Password:  r.Password,
 		Insecure:  true,
 		BasicAuth: false,
 	}
-	c, err := gofish.Connect(cfg)
+	client, err := gofish.Connect(cfg)
 	if err != nil {
 		return
 	}
-	defer c.Logout()
-	service := c.Service
+	defer client.Logout()
+	service := client.Service
 	chassis, err := service.Chassis()
 	if err != nil {
 		return

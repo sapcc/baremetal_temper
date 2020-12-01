@@ -1,4 +1,4 @@
-package redfish
+package provision
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"io/ioutil"
 	"time"
 
+	"github.com/sapcc/ironic_temper/pkg/clients"
 	"github.com/sapcc/ironic_temper/pkg/config"
-	"github.com/sapcc/ironic_temper/pkg/ironic"
 )
 
 // NetboxDiscovery is ...
@@ -18,14 +18,14 @@ type NetboxDiscovery struct {
 }
 
 // Redfish is ...
-type Redfish struct {
+type Scheduler struct {
 	cfg         config.Config
 	provisoners map[string]*Provisioner
 }
 
 // New Redfish Instance
-func New(cfg config.Config) Redfish {
-	r := Redfish{
+func NewScheduler(cfg config.Config) Scheduler {
+	r := Scheduler{
 		cfg:         cfg,
 		provisoners: make(map[string]*Provisioner),
 	}
@@ -33,7 +33,7 @@ func New(cfg config.Config) Redfish {
 }
 
 // Start ...
-func (r Redfish) Start(ctx context.Context, errors chan<- error) {
+func (r Scheduler) Start(ctx context.Context, errors chan<- error) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
@@ -49,7 +49,7 @@ loop:
 			p, ok := r.provisoners[node.Name]
 			if !ok {
 				var err error
-				p, err = NewProvisioner(node, r.cfg.IronicInspectorHost)
+				p, err = NewProvisioner(node, r.cfg)
 				if err != nil {
 					// fail to create provisioner
 					errors <- err
@@ -57,7 +57,7 @@ loop:
 				}
 				r.provisoners[node.Name] = p
 			}
-			bmc, err := node.LoadRedfishInfo()
+			bmc, err := p.clientRedfish.LoadRedfishInfo(node.IP)
 			if err != nil {
 				// fail to load data with redfish client
 				errors <- err
@@ -77,7 +77,7 @@ loop:
 
 			// create ironic node with insepctor
 			if false {
-				p.CreateIronicNodeWithInspector(&bmc)
+				p.clientInspector.CreateIronicNode(&bmc)
 			}
 		}
 		select {
@@ -89,7 +89,7 @@ loop:
 	}
 }
 
-func (r Redfish) loadNodes() (nodes []ironic.Node, err error) {
+func (r Scheduler) loadNodes() (nodes []IronicNode, err error) {
 	d, err := ioutil.ReadFile(r.cfg.NetboxNodesPath)
 	if err != nil {
 		return
@@ -103,12 +103,10 @@ func (r Redfish) loadNodes() (nodes []ironic.Node, err error) {
 	for _, t := range targets {
 		nodeIP := t.Targets[0]
 		nodeName := t.Labels["server_name"]
-		node := ironic.Node{
-			IP:             nodeIP,
-			Name:           nodeName,
-			Region:         r.cfg.OsRegion,
-			IronicUser:     r.cfg.IronicUser,
-			IronicPassword: r.cfg.IronicPassword,
+		node := IronicNode{
+			IP:     nodeIP,
+			Name:   nodeName,
+			Region: r.cfg.OsRegion,
 		}
 		nodes = append(nodes, node)
 	}
@@ -116,6 +114,6 @@ func (r Redfish) loadNodes() (nodes []ironic.Node, err error) {
 	return
 }
 
-func (r Redfish) updateNetbox(i ironic.InspectorCallbackData) {
+func (r Scheduler) updateNetbox(d clients.InspectorCallbackData) {
 	// update provision_state
 }

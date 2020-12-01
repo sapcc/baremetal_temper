@@ -1,4 +1,4 @@
-package ironic
+package clients
 
 import (
 	"bytes"
@@ -8,6 +8,10 @@ import (
 	"net/url"
 	"path"
 )
+
+type InspectorClient struct {
+	Host string
+}
 
 type InspectorCallbackData struct {
 	RootDisk      RootDisk    `json:"root_disk"`
@@ -69,9 +73,9 @@ type CPU struct {
 	Architecture string   `json:"architecture"`
 }
 
-func CreateNodeWithInspector(d *InspectorCallbackData, host string) (err error) {
+func (i InspectorClient) CreateIronicNode(d *InspectorCallbackData) (err error) {
 	client := &http.Client{}
-	u, err := url.Parse(fmt.Sprintf("https://%s", host))
+	u, err := url.Parse(fmt.Sprintf("https://%s", i.Host))
 	if err != nil {
 		return
 	}
