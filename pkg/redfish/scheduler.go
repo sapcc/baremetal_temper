@@ -9,24 +9,25 @@ import (
 
 	"github.com/sapcc/ironic_temper/pkg/config"
 	"github.com/sapcc/ironic_temper/pkg/ironic"
-	"github.com/stmcginnis/gofish"
 )
 
-// Node is ...
-type Node struct {
+// NetboxDiscovery is ...
+type NetboxDiscovery struct {
 	Targets []string          `json:"targets"`
 	Labels  map[string]string `json:"labels"`
 }
 
 // Redfish is ...
 type Redfish struct {
-	cfg config.Config
+	cfg         config.Config
+	provisoners map[string]*Provisioner
 }
 
 // New Redfish Instance
 func New(cfg config.Config) Redfish {
 	r := Redfish{
-		cfg: cfg,
+		cfg:         cfg,
+		provisoners: make(map[string]*Provisioner),
 	}
 	return r
 }
@@ -40,15 +41,44 @@ loop:
 	for {
 		nodes, err := r.loadNodes()
 		if err != nil {
-			fmt.Println(err)
+			errors <- err
 			continue
 		}
 		for _, node := range nodes {
-			bm, err := r.loadRedfishInfo(node)
+			// var p *Provisioner
+			p, ok := r.provisoners[node.Name]
+			if !ok {
+				var err error
+				p, err = NewProvisioner(node, r.cfg.IronicInspectorHost)
+				if err != nil {
+					// fail to create provisioner
+					errors <- err
+					continue
+				}
+				r.provisoners[node.Name] = p
+			}
+			bmc, err := node.LoadRedfishInfo()
 			if err != nil {
+				// fail to load data with redfish client
+				errors <- err
 				continue
 			}
-			r.createIronicNode(bm)
+			if ok, err := p.CheckIronicNodeExists(); err != nil {
+				// fail to check ironic node
+				errors <- err
+				continue
+			} else {
+				if ok {
+					// ironic node exists
+					errors <- fmt.Errorf("Node %s exist", node.Name)
+					continue
+				}
+			}
+
+			// create ironic node with insepctor
+			if false {
+				p.CreateIronicNodeWithInspector(&bmc)
+			}
 		}
 		select {
 		case <-ticker.C:
@@ -59,70 +89,31 @@ loop:
 	}
 }
 
-func (r Redfish) loadNodes() (ips []string, err error) {
+func (r Redfish) loadNodes() (nodes []ironic.Node, err error) {
 	d, err := ioutil.ReadFile(r.cfg.NetboxNodesPath)
 	if err != nil {
 		return
 	}
 
-	t := make([]Node, 0)
-	if err = json.Unmarshal(d, &t); err != nil {
+	targets := make([]NetboxDiscovery, 0)
+	if err = json.Unmarshal(d, &targets); err != nil {
 		return
 	}
 
-	for _, node := range t {
-		ips = append(ips, node.Targets...)
+	for _, t := range targets {
+		nodeIP := t.Targets[0]
+		nodeName := t.Labels["server_name"]
+		node := ironic.Node{
+			IP:             nodeIP,
+			Name:           nodeName,
+			Region:         r.cfg.OsRegion,
+			IronicUser:     r.cfg.IronicUser,
+			IronicPassword: r.cfg.IronicPassword,
+		}
+		nodes = append(nodes, node)
 	}
 
 	return
-}
-
-func (r Redfish) loadRedfishInfo(nodeIP string) (i ironic.InspectorCallbackData, err error) {
-	fmt.Println(nodeIP)
-	cfg := gofish.ClientConfig{
-		Endpoint:  fmt.Sprintf("https://%s", nodeIP),
-		Username:  r.cfg.IronicUser,
-		Password:  r.cfg.IronicPassword,
-		Insecure:  true,
-		BasicAuth: false,
-	}
-	c, err := gofish.Connect(cfg)
-	if err != nil {
-		return
-	}
-	defer c.Logout()
-	service := c.Service
-	chassis, err := service.Chassis()
-	if err != nil {
-		return
-	}
-	for _, chass := range chassis {
-		n, err := chass.NetworkAdapters()
-		if err != nil {
-			continue
-		}
-		if len(n) == 0 {
-			continue
-		}
-		i.Interfaces = make([]ironic.Interface, len(n))
-		f, err := n[0].NetworkDeviceFunctions()
-		i.Interfaces[0].MacAddress = f[0].Ethernet.MACAddress
-		fmt.Println(f[0].Ethernet.MACAddress)
-		fmt.Printf("Chassis: %#v\n\n", chass.Manufacturer)
-	}
-	return
-}
-
-func (r Redfish) createIronicNode(i ironic.InspectorCallbackData) (err error) {
-	return ironic.CreateIronicNode(i, r.cfg.IronicInspectorCallback)
-}
-
-func (r Redfish) checkIronicNodeCreation(i ironic.InspectorCallbackData) {
-
-}
-
-func (r Redfish) checkIronicNodeExists(i ironic.InspectorCallbackData) {
-
 }
 
 func (r Redfish) updateNetbox(i ironic.InspectorCallbackData) {

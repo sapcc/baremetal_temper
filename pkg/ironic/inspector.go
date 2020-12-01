@@ -69,7 +69,7 @@ type CPU struct {
 	Architecture string   `json:"architecture"`
 }
 
-func CreateIronicNode(d InspectorCallbackData, host string) (err error) {
+func CreateNodeWithInspector(d *InspectorCallbackData, host string) (err error) {
 	client := &http.Client{}
 	u, err := url.Parse(fmt.Sprintf("https://%s", host))
 	if err != nil {

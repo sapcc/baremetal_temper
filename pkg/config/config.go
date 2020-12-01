@@ -8,10 +8,13 @@ import (
 )
 
 type Config struct {
-	IronicInspectorCallback string `yaml:"ironic_inspector_callback"`
-	NetboxNodesPath         string `yaml:"netbox_nodes_path"`
 	IronicUser              string `yaml:"ironic_user"`
 	IronicPassword          string `yaml:"ironic_password"`
+	IronicInspectorHost     string `yaml:"ironic_inspector_host"`
+	IronicInspectorCallback string `yaml:"ironic_inspector_callback"`
+	NetboxNodesPath         string `yaml:"netbox_nodes_path"`
+	OsRegion                string `yaml:"os_region"`
+	NameSpace				string `yaml:"namespace"`
 }
 
 func GetConfig(opts Options) (cfg Config, err error) {
