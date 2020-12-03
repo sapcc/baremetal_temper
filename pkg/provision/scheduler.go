@@ -58,7 +58,7 @@ loop:
 			}
 			if ok {
 				// ironic node exists
-				fmt.Printf("Node %s exist", node.Name)
+				fmt.Printf("Node %s exist\n", node.Name)
 				continue
 			}
 			bmc, err := p.clientRedfish.LoadRedfishInfo(node.IP)
