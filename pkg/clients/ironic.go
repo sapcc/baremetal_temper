@@ -6,6 +6,7 @@ import (
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
+	"github.com/gophercloud/gophercloud/openstack/baremetal/apiversions"
 	"github.com/gophercloud/gophercloud/pagination"
 )
 
@@ -28,19 +29,26 @@ func NewClient(region string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	version, err := apiversions.Get(client, "v1").Extract()
+	if err != nil {
+		return nil, err
+	}
+	client.Microversion = version.Version
 	return &Client{client}, nil
 }
 
 // GetNodeUUIDByName gets node's uuid by node name
 func (c *Client) GetNodeUUIDByName(name string) (nodeUUID string, err error) {
 	nodeList, err := c.listNodes()
-	for _, _node := range nodeList {
-		node, err := c.getNodeByID(_node.UUID)
-		if err != nil {
-			return "", err
-		}
-		fmt.Printf("%v\n\n", node)
+	if err != nil {
+		return
 	}
+	for _, n := range nodeList {
+		if n.Name == name {
+			return n.UUID, nil
+		}
+	}
+	err = fmt.Errorf("Node %s not found", name)
 	return
 }
 
@@ -61,4 +69,8 @@ func (c *Client) listNodes() (l []nodes.Node, err error) {
 
 func (c *Client) getNodeByID(id string) (n *nodes.Node, err error) {
 	return nodes.Get(c.Client, id).Extract()
+}
+
+func (c *Client) getAPIVersion() (*apiversions.APIVersion, error) {
+	return apiversions.Get(c.Client, "v1").Extract()
 }

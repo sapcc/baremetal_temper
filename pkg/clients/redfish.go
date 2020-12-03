@@ -7,8 +7,8 @@ import (
 )
 
 type RedfishClient struct {
-	Host string
-	User string
+	Host     string
+	User     string
 	Password string
 }
 
