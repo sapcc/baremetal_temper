@@ -45,17 +45,21 @@ loop:
 			continue
 		}
 		for _, node := range nodes {
-			// var p *Provisioner
-			p, ok := r.provisoners[node.Name]
-			if !ok {
-				var err error
-				p, err = NewProvisioner(node, r.cfg)
-				if err != nil {
-					// fail to create provisioner
-					errors <- err
-					continue
-				}
-				r.provisoners[node.Name] = p
+			p, err := r.getProvisioner(node)
+			if err != nil {
+				errors <- err
+				continue
+			}
+			ok, err := p.CheckIronicNodeExists()
+			if err != nil {
+				// fail to check ironic node
+				errors <- err
+				continue
+			}
+			if ok {
+				// ironic node exists
+				fmt.Printf("Node %s exist", node.Name)
+				continue
 			}
 			bmc, err := p.clientRedfish.LoadRedfishInfo(node.IP)
 			if err != nil {
@@ -63,18 +67,6 @@ loop:
 				errors <- err
 				continue
 			}
-			if ok, err := p.CheckIronicNodeExists(); err != nil {
-				// fail to check ironic node
-				errors <- err
-				continue
-			} else {
-				if ok {
-					// ironic node exists
-					errors <- fmt.Errorf("Node %s exist", node.Name)
-					continue
-				}
-			}
-
 			// create ironic node with insepctor
 			if false {
 				p.clientInspector.CreateIronicNode(&bmc)
@@ -111,6 +103,18 @@ func (r Scheduler) loadNodes() (nodes []IronicNode, err error) {
 		nodes = append(nodes, node)
 	}
 
+	return
+}
+
+func (r Scheduler) getProvisioner(node IronicNode) (p *Provisioner, err error) {
+	p, ok := r.provisoners[node.Name]
+	if ok {
+		return
+	}
+	p, err = NewProvisioner(node, r.cfg)
+	if err == nil {
+		r.provisoners[node.Name] = p
+	}
 	return
 }
 
