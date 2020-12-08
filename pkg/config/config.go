@@ -8,13 +8,31 @@ import (
 )
 
 type Config struct {
-	IronicUser              string `yaml:"ironic_user"`
-	IronicPassword          string `yaml:"ironic_password"`
-	IronicInspectorHost     string `yaml:"ironic_inspector_host"`
-	IronicInspectorCallback string `yaml:"ironic_inspector_callback"`
-	NetboxNodesPath         string `yaml:"netbox_nodes_path"`
-	OsRegion                string `yaml:"os_region"`
-	NameSpace				string `yaml:"namespace"`
+	IronicAuth      IronicAuth `yaml:"ironic_auth"`
+	Inspector       Inspector  `yaml:"inspector"`
+	Redfish         Redfish    `yaml:"redfish"`
+	NetboxNodesPath string     `yaml:"netbox_nodes_path"`
+	OsRegion        string     `yaml:"os_region"`
+	NameSpace       string     `yaml:"namespace"`
+}
+
+type Inspector struct {
+	Host     string `yaml:"host"`
+	Callback string `yaml:"callback"`
+}
+
+type Redfish struct {
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+}
+
+type IronicAuth struct {
+	User              string `yaml:"user"`
+	Password          string `yaml:"password"`
+	AuthURL           string `yaml:"auth_url"`
+	DomainName        string `yaml:"user_domain_name"`
+	ProjectName       string `yaml:"project_name"`
+	ProjectDomainName string `yaml:"domain_name"`
 }
 
 func GetConfig(opts Options) (cfg Config, err error) {

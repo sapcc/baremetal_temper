@@ -1,42 +1,47 @@
 package provision
 
 import (
+	"fmt"
+
 	"github.com/sapcc/ironic_temper/pkg/clients"
 	"github.com/sapcc/ironic_temper/pkg/config"
+	"github.com/sapcc/ironic_temper/pkg/model"
 )
 
 type Provisioner struct {
-	ironicNode      IronicNode
+	ironicNode      model.IronicNode
 	clientIronic    *clients.Client
 	clientRedfish   clients.RedfishClient
 	clientInspector clients.InspectorClient
 }
 
-type IronicNode struct {
-	Name   string
-	IP     string
-	UUID   string
-	Region string
+type NodeNotFoundError struct {
+	Err string
 }
 
-func NewProvisioner(node IronicNode, cfg config.Config) (*Provisioner, error) {
-	clientIronic, err := clients.NewClient(node.Region)
+func (n *NodeNotFoundError) Error() string {
+	return n.Err
+}
+
+func NewProvisioner(node model.IronicNode, cfg config.Config) (*Provisioner, error) {
+	clientIronic, err := clients.NewClient(node.Region, cfg.IronicAuth)
 	if err != nil {
 		return nil, err
 	}
-	clientRedfish := clients.RedfishClient{Host: node.IP, User: cfg.IronicUser, Password: cfg.IronicPassword}
-	clientInspector := clients.InspectorClient{Host: cfg.IronicInspectorHost}
+	clientRedfish := clients.RedfishClient{Host: node.IP, User: cfg.Redfish.User, Password: cfg.Redfish.Password}
+	clientInspector := clients.InspectorClient{Host: cfg.Inspector.Host}
 	return &Provisioner{node, clientIronic, clientRedfish, clientInspector}, nil
 }
 
-func (p *Provisioner) CheckIronicNodeExists() (bool, error) {
+func (p *Provisioner) CheckIronicNodeExists() error {
 	if p.ironicNode.UUID != "" {
-		return true, nil
+		return nil
 	}
-	uuid, err := p.clientIronic.GetNodeUUIDByName(p.ironicNode.Name)
+	_, err := p.clientIronic.GetNodeByUUID(p.ironicNode.UUID)
 	if err != nil {
-		return false, err
+		return &NodeNotFoundError{
+			Err: fmt.Sprintf("could not find node %s", p.ironicNode.UUID),
+		}
 	}
-	p.ironicNode.UUID = uuid
-	return true, nil
+	return nil
 }

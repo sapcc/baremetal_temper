@@ -46,7 +46,6 @@ func main() {
 		select {
 		case err := <-errors:
 			log.Error(err.Error())
-			os.Exit(1)
 		}
 	}()
 	cfg, err := config.GetConfig(opts)

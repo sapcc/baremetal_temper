@@ -3,12 +3,12 @@ package provision
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"time"
 
 	"github.com/sapcc/ironic_temper/pkg/clients"
 	"github.com/sapcc/ironic_temper/pkg/config"
+	"github.com/sapcc/ironic_temper/pkg/model"
 )
 
 // NetboxDiscovery is ...
@@ -34,7 +34,7 @@ func NewScheduler(cfg config.Config) Scheduler {
 
 // Start ...
 func (r Scheduler) Start(ctx context.Context, errors chan<- error) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 
 loop:
@@ -50,17 +50,6 @@ loop:
 				errors <- err
 				continue
 			}
-			ok, err := p.CheckIronicNodeExists()
-			if err != nil {
-				// fail to check ironic node
-				errors <- err
-				continue
-			}
-			if ok {
-				// ironic node exists
-				fmt.Printf("Node %s exist\n", node.Name)
-				continue
-			}
 			bmc, err := p.clientRedfish.LoadRedfishInfo(node.IP)
 			if err != nil {
 				// fail to load data with redfish client
@@ -68,8 +57,26 @@ loop:
 				continue
 			}
 			// create ironic node with insepctor
-			if false {
-				p.clientInspector.CreateIronicNode(&bmc)
+			err = p.clientInspector.CreateIronicNode(bmc, &p.ironicNode)
+			if err != nil {
+				// fail to create ironic node
+				errors <- err
+				continue
+			}
+			if err = p.CheckIronicNodeExists(); err != nil {
+				// fail to create ironic node
+				errors <- err
+				continue
+			}
+			if err = p.clientIronic.SetNodeName(p.ironicNode.UUID, p.ironicNode.Name); err != nil {
+				// fail to update ironic node name
+				errors <- err
+				continue
+			}
+			if err = p.clientIronic.PowerNodeOn(p.ironicNode.UUID); err != nil {
+				// fail to power on ironic node
+				errors <- err
+				continue
 			}
 		}
 		select {
@@ -81,7 +88,7 @@ loop:
 	}
 }
 
-func (r Scheduler) loadNodes() (nodes []IronicNode, err error) {
+func (r Scheduler) loadNodes() (nodes []model.IronicNode, err error) {
 	d, err := ioutil.ReadFile(r.cfg.NetboxNodesPath)
 	if err != nil {
 		return
@@ -95,7 +102,7 @@ func (r Scheduler) loadNodes() (nodes []IronicNode, err error) {
 	for _, t := range targets {
 		nodeIP := t.Targets[0]
 		nodeName := t.Labels["server_name"]
-		node := IronicNode{
+		node := model.IronicNode{
 			IP:     nodeIP,
 			Name:   nodeName,
 			Region: r.cfg.OsRegion,
@@ -106,7 +113,7 @@ func (r Scheduler) loadNodes() (nodes []IronicNode, err error) {
 	return
 }
 
-func (r Scheduler) getProvisioner(node IronicNode) (p *Provisioner, err error) {
+func (r Scheduler) getProvisioner(node model.IronicNode) (p *Provisioner, err error) {
 	p, ok := r.provisoners[node.Name]
 	if ok {
 		return
