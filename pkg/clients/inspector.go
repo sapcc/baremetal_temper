@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/sapcc/ironic_temper/pkg/model"
+	log "github.com/sirupsen/logrus"
 )
 
 type InspectorClient struct {
@@ -110,7 +111,7 @@ func (i InspectorClient) CreateIronicNode(d *InspectorCallbackData, in *model.Ir
 	if err != nil {
 		return
 	}
-	fmt.Println(string(db))
+	log.Debugf("calling (%s) with data: %s", u.String(), string(db))
 	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewBuffer(db))
 	if err != nil {
 		return

@@ -3,13 +3,13 @@ package provision
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"time"
 
 	"github.com/sapcc/ironic_temper/pkg/clients"
 	"github.com/sapcc/ironic_temper/pkg/config"
 	"github.com/sapcc/ironic_temper/pkg/model"
+	log "github.com/sirupsen/logrus"
 )
 
 // NetboxDiscovery is ...
@@ -40,6 +40,7 @@ func (r Scheduler) Start(ctx context.Context, errors chan<- error) {
 
 loop:
 	for {
+		log.Debug("starting temper loop...")
 		nodes, err := r.loadNodes()
 		if err != nil {
 			errors <- err
@@ -79,7 +80,7 @@ loop:
 				errors <- err
 				continue
 			}
-			fmt.Println("finished tempering node: " + p.ironicNode.Name)
+			log.Infof("finished tempering node: %s", p.ironicNode.Name)
 		}
 		select {
 		case <-ticker.C:
