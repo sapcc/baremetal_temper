@@ -35,14 +35,13 @@ type RootDisk struct {
 }
 
 type Inventory struct {
-	Serial       string      `json:"serial"`
-	Manufacturer string      `json:"manufacturer"`
-	Model        string      `json:"model"`
-	BmcAddress   string      `json:"bmc_address"`
-	Interfaces   []Interface `json:"interfaces"`
-	Disks        []Disk      `json:"disks"`
-	Memory       Memory      `json:"memory"`
-	CPU          CPU         `json:"cpu"`
+	BmcAddress   string       `json:"bmc_address"`
+	SystemVendor SystemVendor `json:"system_vendor"`
+	Boot         Boot         `json:"boot"`
+	Interfaces   []Interface  `json:"interfaces"`
+	Disks        []Disk       `json:"disks"`
+	Memory       Memory       `json:"memory"`
+	CPU          CPU          `json:"cpu"`
 }
 
 type Interface struct {
@@ -54,6 +53,17 @@ type Interface struct {
 	IP4Address string  `json:"ipv4_address"`
 	ClientID   *string `json:"client_id"`
 	MacAddress string  `json:"mac_address"`
+}
+
+type Boot struct {
+	CurrentBootMode string `json:"current_boot_mode"`
+	PxeInterface    string `json:"pxe_interface"`
+}
+
+type SystemVendor struct {
+	SerialNumber string `json:"serial_number"`
+	ProductName  string `json:"product_name"`
+	Manufacturer string `json:"manufacturer"`
 }
 
 type Disk struct {
@@ -70,8 +80,8 @@ type Disk struct {
 }
 
 type Memory struct {
-	PhysicalMb int `json:"physical_mb"`
-	Total      int `json:"total"`
+	PhysicalMb float32 `json:"physical_mb"`
+	Total      float32 `json:"total"`
 }
 
 type CPU struct {
@@ -79,6 +89,14 @@ type CPU struct {
 	Frequency    string   `json:"frequency"`
 	Flags        []string `json:"flags"`
 	Architecture string   `json:"architecture"`
+}
+
+type InspectorErr struct {
+	Error ErrorMessage `json:"error"`
+}
+
+type ErrorMessage struct {
+	Message string `json:"message"`
 }
 
 func (i InspectorClient) CreateIronicNode(d *InspectorCallbackData, in *model.IronicNode) (err error) {
@@ -92,6 +110,7 @@ func (i InspectorClient) CreateIronicNode(d *InspectorCallbackData, in *model.Ir
 	if err != nil {
 		return
 	}
+	fmt.Println(string(db))
 	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewBuffer(db))
 	if err != nil {
 		return
@@ -102,13 +121,19 @@ func (i InspectorClient) CreateIronicNode(d *InspectorCallbackData, in *model.Ir
 		return
 	}
 
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("could not create node")
-	}
 	bodyBytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		return
 	}
+
+	if res.StatusCode != http.StatusOK {
+		ierr := &InspectorErr{}
+		if err = json.Unmarshal(bodyBytes, ierr); err != nil {
+			return fmt.Errorf("could not create node")
+		}
+		return fmt.Errorf(ierr.Error.Message)
+	}
+
 	if err = json.Unmarshal(bodyBytes, in); err != nil {
 		return
 	}

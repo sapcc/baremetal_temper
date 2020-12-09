@@ -3,6 +3,7 @@ package clients
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/sapcc/ironic_temper/pkg/config"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetal/apiversions"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/pagination"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 type Client struct {
@@ -73,9 +75,15 @@ func (c *Client) SetNodeName(uuid, name string) (err error) {
 			Value: name,
 		},
 	}
-	r := nodes.Update(c.Client, uuid, updateOpts)
-	_, err = r.Extract()
-	return
+	cf := wait.ConditionFunc(func() (bool, error) {
+		r := nodes.Update(c.Client, uuid, updateOpts)
+		_, err = r.Extract()
+		if err != nil {
+			return false, nil
+		}
+		return true, nil
+	})
+	return wait.Poll(5*time.Second, 30*time.Second, cf)
 }
 
 func (c *Client) PowerNodeOn(uuid string) (err error) {
@@ -83,15 +91,29 @@ func (c *Client) PowerNodeOn(uuid string) (err error) {
 		Target: nodes.PowerOn,
 	}
 	r := nodes.ChangePowerState(c.Client, uuid, powerStateOpts)
-	switch r.Err.(type) {
-	case nil:
-		return
-	case gophercloud.ErrDefault409:
-		//p.log.Info("host is locked, trying again after delay", "delay", powerRequeueDelay)
-		return fmt.Errorf("cannot power on node %s", uuid)
-	default:
-		return fmt.Errorf("cannot power on node %s", uuid)
+
+	if r.Err != nil {
+		switch r.Err.(type) {
+		case gophercloud.ErrDefault409:
+			//p.log.Info("host is locked, trying again after delay", "delay", powerRequeueDelay)
+			return fmt.Errorf("cannot power on node %s", uuid)
+		default:
+			return fmt.Errorf("cannot power on node %s", uuid)
+		}
 	}
+
+	cf := wait.ConditionFunc(func() (bool, error) {
+		r := nodes.Get(c.Client, uuid)
+		n, err := r.Extract()
+		if err != nil {
+			return false, fmt.Errorf("cannot power on node")
+		}
+		if n.PowerState != string(nodes.PowerOn) {
+			return false, nil
+		}
+		return true, nil
+	})
+	return wait.Poll(5*time.Second, 30*time.Second, cf)
 }
 
 func (c *Client) listNodes() (l []nodes.Node, err error) {

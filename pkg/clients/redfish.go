@@ -3,8 +3,10 @@ package clients
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/stmcginnis/gofish"
+	"github.com/stmcginnis/gofish/redfish"
 )
 
 type RedfishClient struct {
@@ -35,7 +37,9 @@ func (r RedfishClient) LoadRedfishInfo(nodeIP string) (i *InspectorCallbackData,
 	if err = r.setBMCAddress(); err != nil {
 		return
 	}
-	r.setInventory()
+	if err = r.setInventory(); err != nil {
+		return
+	}
 	i = r.data
 	return
 }
@@ -63,40 +67,36 @@ func (r RedfishClient) setInventory() (err error) {
 		return
 	}
 
-	r.data.Inventory.Manufacturer = ch[0].Manufacturer
-	r.data.Inventory.Serial = ch[0].SerialNumber
-	r.data.Inventory.Model = ch[0].Model
+	r.data.Inventory.SystemVendor.Manufacturer = ch[0].Manufacturer
+	r.data.Inventory.SystemVendor.SerialNumber = ch[0].SerialNumber
+	r.data.Inventory.SystemVendor.ProductName = ch[0].Model
 
-	if err = r.setMemory(); err != nil {
+	s, err := r.service.Systems()
+	if err != nil || len(s) == 0 {
 		return
 	}
-	if err = r.setDisks(); err != nil {
+	if err = r.setMemory(s[0]); err != nil {
 		return
 	}
-	if err = r.setCPUs(); err != nil {
+	if err = r.setDisks(s[0]); err != nil {
 		return
 	}
-	if err = r.setNetworkDevicesData(); err != nil {
+	if err = r.setCPUs(s[0]); err != nil {
+		return
+	}
+	if err = r.setNetworkDevicesData(s[0]); err != nil {
 		return
 	}
 	return
 }
 
-func (r RedfishClient) setMemory() (err error) {
-	s, err := r.service.Systems()
-	if err != nil || len(s) == 0 {
-		return
-	}
-	r.data.Inventory.Memory.PhysicalMb = int(s[0].MemorySummary.TotalSystemPersistentMemoryGiB)
+func (r RedfishClient) setMemory(s *redfish.ComputerSystem) (err error) {
+	r.data.Inventory.Memory.Total = s.MemorySummary.TotalSystemMemoryGiB
 	return
 }
 
-func (r RedfishClient) setDisks() (err error) {
-	s, err := r.service.Systems()
-	if err != nil || len(s) == 0 {
-		return
-	}
-	st, err := s[0].Storage()
+func (r RedfishClient) setDisks(s *redfish.ComputerSystem) (err error) {
+	st, err := s.Storage()
 	rootDisk := RootDisk{
 		Rotational: true,
 	}
@@ -136,36 +136,29 @@ func (r RedfishClient) setDisks() (err error) {
 	return
 }
 
-func (r RedfishClient) setCPUs() (err error) {
-	sys, err := r.service.Systems()
-	cpu, err := sys[0].Processors()
-	r.data.Inventory.CPU.Count = sys[0].ProcessorSummary.LogicalProcessorCount
+func (r RedfishClient) setCPUs(s *redfish.ComputerSystem) (err error) {
+	cpu, err := s.Processors()
+	if err != nil || len(cpu) == 0 {
+		return
+	}
+	r.data.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount
 	r.data.Inventory.CPU.Architecture = string(cpu[0].InstructionSet)
 	return
 }
 
-func (r RedfishClient) setNetworkDevicesData() (err error) {
-	sys, err := r.service.Systems()
-	if err != nil {
+func (r RedfishClient) setNetworkDevicesData(s *redfish.ComputerSystem) (err error) {
+	ethInt, err := s.EthernetInterfaces()
+	if err != nil || len(ethInt) == 0 {
 		return
 	}
-	if len(sys) == 0 {
-		return
-	}
-	ethInt, err := sys[0].EthernetInterfaces()
-	if err != nil {
-		return
-	}
-	if len(ethInt) == 0 {
-		return
-	}
+	r.data.Inventory.Boot.PxeInterface = ethInt[0].MACAddress
+	r.data.BootInterface = "01-" + strings.ReplaceAll(ethInt[0].MACAddress, ":", "-")
+	r.data.Inventory.Boot.CurrentBootMode = "bios"
 	r.data.Inventory.Interfaces = make([]Interface, len(ethInt))
 	for i, e := range ethInt {
-		//r.data.BootInterface = e.MACAddress
 		r.data.Inventory.Interfaces[i].MacAddress = e.MACAddress
-		r.data.Inventory.Interfaces[i].Name = e.Name
-		r.data.Inventory.Interfaces[i].ClientID = &e.ID
-		r.data.Inventory.Interfaces[i].HasCarrier = true
+		r.data.Inventory.Interfaces[i].Name = e.ID
+		//r.data.Inventory.Interfaces[i].HasCarrier = true
 	}
 
 	return

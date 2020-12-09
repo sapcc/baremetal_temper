@@ -3,6 +3,7 @@ package provision
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"time"
 
@@ -78,6 +79,7 @@ loop:
 				errors <- err
 				continue
 			}
+			fmt.Println("finished tempering node: " + p.ironicNode.Name)
 		}
 		select {
 		case <-ticker.C:
