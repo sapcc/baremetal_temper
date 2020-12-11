@@ -21,7 +21,7 @@ func init() {
 	opts.LogLevelValue = config.LogLevelValue{LogLevel: log.InfoLevel}
 
 	flag.StringVar(&opts.ConfigFilePath, "CONFIG_FILE", "./etc/config.yaml", "Path to the config file")
-	flag.DurationVar(&opts.CheckInterval, "CHECK_INTERVAL", 60*time.Second, "interval for the check")
+	flag.DurationVar(&opts.CheckInterval, "CHECK_INTERVAL", 60*time.Minute, "interval for the check")
 	flag.Var(&opts.LogLevelValue, "LOG_LEVEL", "log level")
 	flag.Parse()
 
@@ -54,5 +54,5 @@ func main() {
 		os.Exit(0)
 	}
 	r := provision.NewScheduler(cfg)
-	r.Start(ctx, errors)
+	r.Start(ctx, opts.CheckInterval, errors)
 }

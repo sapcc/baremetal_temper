@@ -34,8 +34,8 @@ func NewScheduler(cfg config.Config) Scheduler {
 }
 
 // Start ...
-func (r Scheduler) Start(ctx context.Context, errors chan<- error) {
-	ticker := time.NewTicker(10 * time.Minute)
+func (r Scheduler) Start(ctx context.Context, d time.Duration, errors chan<- error) {
+	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
 loop:
@@ -52,7 +52,12 @@ loop:
 				errors <- err
 				continue
 			}
-			bmc, err := p.clientRedfish.LoadRedfishInfo(node.IP)
+			if err = p.clientIronic.CreateDNSRecordFor(&p.ironicNode); err != nil {
+				// fail to load data with redfish client
+				errors <- err
+				continue
+			}
+			bmc, err := p.clientRedfish.LoadRedfishInfo(p.ironicNode)
 			if err != nil {
 				// fail to load data with redfish client
 				errors <- err
@@ -61,16 +66,20 @@ loop:
 			// create ironic node with insepctor
 			err = p.clientInspector.CreateIronicNode(bmc, &p.ironicNode)
 			if err != nil {
+				if _, ok := err.(*clients.NodeAlreadyExists); ok {
+					log.Infof("Node %s already exists, continue with the next node", p.ironicNode.Name)
+					continue
+				}
 				// fail to create ironic node
 				errors <- err
 				continue
 			}
-			if err = p.CheckIronicNodeExists(); err != nil {
-				// fail to create ironic node
+			if err = p.CheckIronicNodeCreated(); err != nil {
+				// fail check if ironic node was created
 				errors <- err
 				continue
 			}
-			if err = p.clientIronic.SetNodeName(p.ironicNode.UUID, p.ironicNode.Name); err != nil {
+			if err = p.clientIronic.UpdateNode(p.ironicNode); err != nil {
 				// fail to update ironic node name
 				errors <- err
 				continue

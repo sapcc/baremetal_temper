@@ -5,4 +5,5 @@ type IronicNode struct {
 	IP     string
 	UUID   string `json:"uuid"`
 	Region string
+	Host   string
 }

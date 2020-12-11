@@ -24,16 +24,16 @@ func (n *NodeNotFoundError) Error() string {
 }
 
 func NewProvisioner(node model.IronicNode, cfg config.Config) (*Provisioner, error) {
-	clientIronic, err := clients.NewClient(node.Region, cfg.IronicAuth)
+	clientIronic, err := clients.NewClient(node.Region, cfg.IronicAuth, cfg.Domain)
 	if err != nil {
 		return nil, err
 	}
-	clientRedfish := clients.RedfishClient{Host: node.IP, User: cfg.Redfish.User, Password: cfg.Redfish.Password}
+	clientRedfish := clients.RedfishClient{User: cfg.Redfish.User, Password: cfg.Redfish.Password}
 	clientInspector := clients.InspectorClient{Host: cfg.Inspector.Host}
 	return &Provisioner{node, clientIronic, clientRedfish, clientInspector}, nil
 }
 
-func (p *Provisioner) CheckIronicNodeExists() error {
+func (p *Provisioner) CheckIronicNodeCreated() error {
 	if p.ironicNode.UUID != "" {
 		return nil
 	}

@@ -14,6 +14,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type NodeAlreadyExists struct {
+	Err string
+}
+
+func (n *NodeAlreadyExists) Error() string {
+	return n.Err
+}
+
 type InspectorClient struct {
 	Host string
 }
@@ -131,6 +139,9 @@ func (i InspectorClient) CreateIronicNode(d *InspectorCallbackData, in *model.Ir
 		ierr := &InspectorErr{}
 		if err = json.Unmarshal(bodyBytes, ierr); err != nil {
 			return fmt.Errorf("could not create node")
+		}
+		if strings.Contains(ierr.Error.Message, "already exists, uuid") {
+			return &NodeAlreadyExists{}
 		}
 		return fmt.Errorf(ierr.Error.Message)
 	}

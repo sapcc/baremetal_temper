@@ -5,12 +5,12 @@ import (
 	"net"
 	"strings"
 
+	"github.com/sapcc/ironic_temper/pkg/model"
 	"github.com/stmcginnis/gofish"
 	"github.com/stmcginnis/gofish/redfish"
 )
 
 type RedfishClient struct {
-	Host     string
 	User     string
 	Password string
 	client   *gofish.APIClient
@@ -18,9 +18,9 @@ type RedfishClient struct {
 	data     *InspectorCallbackData
 }
 
-func (r RedfishClient) LoadRedfishInfo(nodeIP string) (i *InspectorCallbackData, err error) {
+func (r RedfishClient) LoadRedfishInfo(n model.IronicNode) (i *InspectorCallbackData, err error) {
 	cfg := gofish.ClientConfig{
-		Endpoint:  fmt.Sprintf("https://%s", nodeIP),
+		Endpoint:  fmt.Sprintf("https://%s", n.Host),
 		Username:  r.User,
 		Password:  r.Password,
 		Insecure:  true,
@@ -34,7 +34,7 @@ func (r RedfishClient) LoadRedfishInfo(nodeIP string) (i *InspectorCallbackData,
 	r.client = client
 	r.data = &InspectorCallbackData{}
 	r.service = client.Service
-	if err = r.setBMCAddress(); err != nil {
+	if err = r.setBMCAddress(n.Host); err != nil {
 		return
 	}
 	if err = r.setInventory(); err != nil {
@@ -44,7 +44,7 @@ func (r RedfishClient) LoadRedfishInfo(nodeIP string) (i *InspectorCallbackData,
 	return
 }
 
-func (r RedfishClient) setBMCAddress() (err error) {
+func (r RedfishClient) setBMCAddress(host string) (err error) {
 	m, err := r.service.Managers()
 	if err != nil && len(m) == 0 {
 		return fmt.Errorf("cannot set bmc address")
@@ -57,8 +57,11 @@ func (r RedfishClient) setBMCAddress() (err error) {
 	if err != nil || len(addr) == 0 {
 		return
 	}
-	r.data.Inventory.BmcAddress = addr[0]
-	return
+	if host == addr[0] {
+		r.data.Inventory.BmcAddress = addr[0]
+		return
+	}
+	return fmt.Errorf("dns record %s does not map to ip: %s", addr[0], in[0].IPv4Addresses[0].Address)
 }
 
 func (r RedfishClient) setInventory() (err error) {

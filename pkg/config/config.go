@@ -13,6 +13,7 @@ type Config struct {
 	Redfish         Redfish    `yaml:"redfish"`
 	NetboxNodesPath string     `yaml:"netbox_nodes_path"`
 	OsRegion        string     `yaml:"os_region"`
+	Domain          string     `yaml:"domain"`
 	NameSpace       string     `yaml:"namespace"`
 }
 
