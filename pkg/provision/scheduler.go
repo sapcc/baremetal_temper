@@ -22,19 +22,23 @@ type NetboxDiscovery struct {
 type Scheduler struct {
 	cfg         config.Config
 	provisoners map[string]*Provisioner
+	erroHandler ErrorHandler
+	ctx         context.Context
 }
 
 // New Redfish Instance
-func NewScheduler(cfg config.Config) Scheduler {
+func NewScheduler(ctx context.Context, cfg config.Config) Scheduler {
 	r := Scheduler{
 		cfg:         cfg,
 		provisoners: make(map[string]*Provisioner),
+		erroHandler: NewErrorHandler(ctx),
+		ctx:         ctx,
 	}
 	return r
 }
 
 // Start ...
-func (r Scheduler) Start(ctx context.Context, d time.Duration, errors chan<- error) {
+func (r Scheduler) Start(d time.Duration) {
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
@@ -43,24 +47,24 @@ loop:
 		log.Debug("starting temper loop...")
 		nodes, err := r.loadNodes()
 		if err != nil {
-			errors <- err
+			r.erroHandler.Errors <- err
 			continue
 		}
 		for _, node := range nodes {
 			p, err := r.getProvisioner(node)
 			if err != nil {
-				errors <- err
+				r.erroHandler.Errors <- err
 				continue
 			}
 			if err = p.clientIronic.CreateDNSRecordFor(&p.ironicNode); err != nil {
 				// fail to load data with redfish client
-				errors <- err
+				r.erroHandler.Errors <- err
 				continue
 			}
 			bmc, err := p.clientRedfish.LoadRedfishInfo(p.ironicNode)
 			if err != nil {
 				// fail to load data with redfish client
-				errors <- err
+				r.erroHandler.Errors <- err
 				continue
 			}
 			// create ironic node with insepctor
@@ -71,22 +75,22 @@ loop:
 					continue
 				}
 				// fail to create ironic node
-				errors <- err
+				r.erroHandler.Errors <- err
 				continue
 			}
 			if err = p.CheckIronicNodeCreated(); err != nil {
 				// fail check if ironic node was created
-				errors <- err
+				r.erroHandler.Errors <- err
 				continue
 			}
 			if err = p.clientIronic.UpdateNode(p.ironicNode); err != nil {
 				// fail to update ironic node name
-				errors <- err
+				r.erroHandler.Errors <- err
 				continue
 			}
 			if err = p.clientIronic.PowerNodeOn(p.ironicNode.UUID); err != nil {
 				// fail to power on ironic node
-				errors <- err
+				r.erroHandler.Errors <- err
 				continue
 			}
 			log.Infof("finished tempering node: %s", p.ironicNode.Name)
@@ -94,7 +98,7 @@ loop:
 		select {
 		case <-ticker.C:
 			continue
-		case <-ctx.Done():
+		case <-r.ctx.Done():
 			break loop
 		}
 	}

@@ -79,7 +79,7 @@ func (c *Client) GetNodeByUUID(uuid string) (node *nodes.Node, err error) {
 }
 
 func (c *Client) UpdateNode(n model.IronicNode) (err error) {
-	updateOpts := nodes.UpdateOpts{
+	updateName := nodes.UpdateOpts{
 		nodes.UpdateOperation{
 			Op:    nodes.ReplaceOp,
 			Path:  "/name",
@@ -87,7 +87,7 @@ func (c *Client) UpdateNode(n model.IronicNode) (err error) {
 		},
 	}
 
-	return c.updateNode(updateOpts, n)
+	return c.updateNode(updateName, n)
 }
 
 func (c *Client) updateNode(opts nodes.UpdateOpts, n model.IronicNode) (err error) {
@@ -165,17 +165,18 @@ func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
 	}
 	allZones, err := zones.ExtractZones(allPages)
 	if err != nil || len(allZones) == 0 {
-		return
+		return fmt.Errorf("wrong dns zone")
 	}
 
 	na := strings.Split(n.Name, "-")
 
 	if len(na) < 1 {
-		return fmt.Errorf("")
+		return fmt.Errorf("wrong node name")
 	}
 
 	name := fmt.Sprintf("%sr-%s", na[0], na[1])
 	recordName := fmt.Sprintf("%s.%s.", name, c.Domain)
+	n.Host = recordName
 
 	_, err = recordsets.Create(c.DnsClient, allZones[0].ID, recordsets.CreateOpts{
 		Name:    recordName,
@@ -189,7 +190,6 @@ func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
 			return nil
 		}
 	}
-	n.Host = recordName
 
 	return
 }

@@ -30,7 +30,6 @@ func init() {
 
 func main() {
 	c := make(chan os.Signal, 1)
-	errors := make(chan error, 0)
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -42,17 +41,11 @@ func main() {
 			os.Exit(0)
 		}
 	}()
-	go func() {
-		select {
-		case err := <-errors:
-			log.Error(err.Error())
-		}
-	}()
 	cfg, err := config.GetConfig(opts)
 	if err != nil {
 		log.Error(err)
 		os.Exit(0)
 	}
-	r := provision.NewScheduler(cfg)
-	r.Start(ctx, opts.CheckInterval, errors)
+	r := provision.NewScheduler(ctx, cfg)
+	r.Start(opts.CheckInterval)
 }
