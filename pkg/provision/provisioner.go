@@ -10,7 +10,7 @@ import (
 
 type Provisioner struct {
 	ironicNode      model.IronicNode
-	clientIronic    *clients.Client
+	clientOpenstack *clients.Client
 	clientRedfish   clients.RedfishClient
 	clientInspector clients.InspectorClient
 }
@@ -37,7 +37,7 @@ func (p *Provisioner) CheckIronicNodeCreated() error {
 	if p.ironicNode.UUID != "" {
 		return nil
 	}
-	_, err := p.clientIronic.GetNodeByUUID(p.ironicNode.UUID)
+	_, err := p.clientOpenstack.GetNodeByUUID(p.ironicNode.UUID)
 	if err != nil {
 		return &NodeNotFoundError{
 			Err: fmt.Sprintf("could not find node %s", p.ironicNode.UUID),

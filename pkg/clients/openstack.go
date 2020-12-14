@@ -13,6 +13,10 @@ import (
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/apiversions"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/services"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/images"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/recordsets"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
 	"github.com/gophercloud/gophercloud/pagination"
@@ -20,9 +24,10 @@ import (
 )
 
 type Client struct {
-	IronicClient *gophercloud.ServiceClient
-	DnsClient    *gophercloud.ServiceClient
-	Domain       string
+	IronicClient  *gophercloud.ServiceClient
+	DnsClient     *gophercloud.ServiceClient
+	ComputeClient *gophercloud.ServiceClient
+	Domain        string
 }
 
 func NewClient(region string, i config.IronicAuth, domain string) (*Client, error) {
@@ -38,6 +43,10 @@ func NewClient(region string, i config.IronicAuth, domain string) (*Client, erro
 		Region: region,
 	})
 
+	cclient, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
+		Region: region,
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +55,7 @@ func NewClient(region string, i config.IronicAuth, domain string) (*Client, erro
 		return nil, err
 	}
 	iclient.Microversion = version.Version
-	return &Client{IronicClient: iclient, DnsClient: dnsClient, Domain: domain}, nil
+	return &Client{IronicClient: iclient, DnsClient: dnsClient, ComputeClient: cclient, Domain: domain}, nil
 }
 
 func newProviderClient(i config.IronicAuth) (pc *gophercloud.ProviderClient, err error) {
@@ -192,4 +201,88 @@ func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
 	}
 
 	return
+}
+
+func (c *Client) CreateNodeTestDeployment(n *model.IronicNode) (err error) {
+	fID, err := c.getFlavorID("inspection_test")
+	iID, err := c.getImageID("")
+	zID, err := c.getConductorZone("")
+
+	if err != nil {
+		return
+	}
+
+	opts := servers.CreateOpts{
+		Name:             fmt.Sprintf("%s_inspector_test", time.Now().Format("2006-01-02T15:04:05")),
+		FlavorRef:        fID,
+		ImageRef:         iID,
+		AvailabilityZone: fmt.Sprintf("%s::%s", zID, n.UUID),
+	}
+	r := servers.Create(c.ComputeClient, opts)
+	s, err := r.Extract()
+	if err != nil {
+		return
+	}
+
+	return servers.WaitForStatus(c.ComputeClient, s.ID, "ACTIVE", 600)
+}
+
+func (c *Client) getImageID(name string) (id string, err error) {
+	err = images.ListDetail(c.ComputeClient, images.ListOpts{Name: name}).EachPage(
+		func(p pagination.Page) (bool, error) {
+			is, err := images.ExtractImages(p)
+			if err != nil {
+				return false, err
+			}
+			for _, i := range is {
+				if i.Name == name {
+					id = i.ID
+					return false, nil
+				}
+			}
+			return true, nil
+		},
+	)
+	return
+}
+
+func (c *Client) getFlavorID(name string) (id string, err error) {
+	err = flavors.ListDetail(c.ComputeClient, nil).EachPage(func(p pagination.Page) (bool, error) {
+		fs, err := flavors.ExtractFlavors(p)
+		if err != nil {
+			return true, err
+		}
+		for _, f := range fs {
+			if f.Name == name {
+				id = f.ID
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	return
+}
+
+func (c *Client) getConductorZone(name string) (id string, err error) {
+	err = services.List(c.ComputeClient, services.ListOpts{Host: name}).EachPage(
+		func(p pagination.Page) (bool, error) {
+			svs, err := services.ExtractServices(p)
+			if err != nil {
+				return true, err
+			}
+			for _, sv := range svs {
+				if sv.Host == name {
+					id = sv.Zone
+					return true, nil
+				}
+			}
+			return false, nil
+		})
+	return
+}
+
+func (c *Client) provideNode(id string) error {
+	return nodes.ChangeProvisionState(c.IronicClient, id, nodes.ProvisionStateOpts{
+		Target: nodes.TargetProvide,
+	}).ExtractErr()
 }

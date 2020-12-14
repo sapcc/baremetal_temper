@@ -56,15 +56,21 @@ loop:
 				r.erroHandler.Errors <- err
 				continue
 			}
-			if err = p.clientIronic.CreateDNSRecordFor(&p.ironicNode); err != nil {
+			if err = p.clientOpenstack.CreateDNSRecordFor(&p.ironicNode); err != nil {
 				// fail to load data with redfish client
-				r.erroHandler.Errors <- err
+				r.erroHandler.Errors <- &SchedulerError{
+					Err:  err.Error(),
+					Node: p.ironicNode.Name,
+				}
 				continue
 			}
 			bmc, err := p.clientRedfish.LoadRedfishInfo(p.ironicNode)
 			if err != nil {
 				// fail to load data with redfish client
-				r.erroHandler.Errors <- err
+				r.erroHandler.Errors <- &SchedulerError{
+					Err:  err.Error(),
+					Node: p.ironicNode.UUID,
+				}
 				continue
 			}
 			// create ironic node with insepctor
@@ -75,22 +81,44 @@ loop:
 					continue
 				}
 				// fail to create ironic node
-				r.erroHandler.Errors <- err
+				r.erroHandler.Errors <- &SchedulerError{
+					Err:  err.Error(),
+					Node: p.ironicNode.UUID,
+				}
 				continue
 			}
+			//p.ironicNode.UUID = "e847cdbd-2d63-4145-81a3-cef227fcb313"
 			if err = p.CheckIronicNodeCreated(); err != nil {
 				// fail check if ironic node was created
-				r.erroHandler.Errors <- err
+				r.erroHandler.Errors <- &SchedulerError{
+					Err:  err.Error(),
+					Node: p.ironicNode.UUID,
+				}
 				continue
 			}
-			if err = p.clientIronic.UpdateNode(p.ironicNode); err != nil {
+			if err = p.clientOpenstack.UpdateNode(p.ironicNode); err != nil {
 				// fail to update ironic node name
-				r.erroHandler.Errors <- err
+				r.erroHandler.Errors <- &SchedulerError{
+					Err:  err.Error(),
+					Node: p.ironicNode.UUID,
+				}
 				continue
 			}
-			if err = p.clientIronic.PowerNodeOn(p.ironicNode.UUID); err != nil {
+			log.Debug("powering on node")
+			if err = p.clientOpenstack.PowerNodeOn(p.ironicNode.UUID); err != nil {
 				// fail to power on ironic node
-				r.erroHandler.Errors <- err
+				r.erroHandler.Errors <- &SchedulerError{
+					Err:  err.Error(),
+					Node: p.ironicNode.UUID,
+				}
+				continue
+			}
+			log.Debug("creating test node deployment")
+			if err = p.clientOpenstack.CreateNodeTestDeployment(&p.ironicNode); err != nil {
+				r.erroHandler.Errors <- &SchedulerError{
+					Err:  err.Error(),
+					Node: p.ironicNode.UUID,
+				}
 				continue
 			}
 			log.Infof("finished tempering node: %s", p.ironicNode.Name)

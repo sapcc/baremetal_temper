@@ -18,7 +18,7 @@ var opts config.Options
 
 func init() {
 	// default log level
-	opts.LogLevelValue = config.LogLevelValue{LogLevel: log.InfoLevel}
+	opts.LogLevelValue = config.LogLevelValue{LogLevel: log.DebugLevel}
 
 	flag.StringVar(&opts.ConfigFilePath, "CONFIG_FILE", "./etc/config.yaml", "Path to the config file")
 	flag.DurationVar(&opts.CheckInterval, "CHECK_INTERVAL", 60*time.Minute, "interval for the check")
