@@ -27,14 +27,18 @@ type Scheduler struct {
 }
 
 // New Redfish Instance
-func NewScheduler(ctx context.Context, cfg config.Config) Scheduler {
-	r := Scheduler{
+func NewScheduler(ctx context.Context, cfg config.Config) (s Scheduler, err error) {
+	p, err := NewProvisioner(model.IronicNode{}, cfg)
+	if err != nil {
+		return
+	}
+	s = Scheduler{
 		cfg:         cfg,
 		provisoners: make(map[string]*Provisioner),
-		erroHandler: NewErrorHandler(ctx),
+		erroHandler: NewErrorHandler(ctx, p.clientOpenstack),
 		ctx:         ctx,
 	}
-	return r
+	return
 }
 
 // Start ...
@@ -51,77 +55,25 @@ loop:
 			continue
 		}
 		for _, node := range nodes {
+			node.Region = "qa-de-1"
 			p, err := r.getProvisioner(node)
 			if err != nil {
 				r.erroHandler.Errors <- err
 				continue
 			}
-			if err = p.clientOpenstack.CreateDNSRecordFor(&p.ironicNode); err != nil {
-				// fail to load data with redfish client
-				r.erroHandler.Errors <- &SchedulerError{
-					Err:  err.Error(),
-					Node: p.ironicNode.Name,
-				}
-				continue
-			}
-			bmc, err := p.clientRedfish.LoadRedfishInfo(p.ironicNode)
-			if err != nil {
-				// fail to load data with redfish client
-				r.erroHandler.Errors <- &SchedulerError{
-					Err:  err.Error(),
-					Node: p.ironicNode.UUID,
-				}
-				continue
-			}
-			// create ironic node with insepctor
-			err = p.clientInspector.CreateIronicNode(bmc, &p.ironicNode)
-			if err != nil {
-				if _, ok := err.(*clients.NodeAlreadyExists); ok {
-					log.Infof("Node %s already exists, continue with the next node", p.ironicNode.Name)
-					continue
-				}
-				// fail to create ironic node
-				r.erroHandler.Errors <- &SchedulerError{
-					Err:  err.Error(),
-					Node: p.ironicNode.UUID,
-				}
-				continue
-			}
-			//p.ironicNode.UUID = "e847cdbd-2d63-4145-81a3-cef227fcb313"
-			if err = p.CheckIronicNodeCreated(); err != nil {
-				// fail check if ironic node was created
-				r.erroHandler.Errors <- &SchedulerError{
-					Err:  err.Error(),
-					Node: p.ironicNode.UUID,
-				}
-				continue
-			}
-			if err = p.clientOpenstack.UpdateNode(p.ironicNode); err != nil {
-				// fail to update ironic node name
-				r.erroHandler.Errors <- &SchedulerError{
-					Err:  err.Error(),
-					Node: p.ironicNode.UUID,
-				}
-				continue
-			}
-			log.Debug("powering on node")
-			if err = p.clientOpenstack.PowerNodeOn(p.ironicNode.UUID); err != nil {
-				// fail to power on ironic node
-				r.erroHandler.Errors <- &SchedulerError{
-					Err:  err.Error(),
-					Node: p.ironicNode.UUID,
-				}
-				continue
-			}
-			log.Debug("creating test node deployment")
-			if err = p.clientOpenstack.CreateNodeTestDeployment(&p.ironicNode); err != nil {
-				r.erroHandler.Errors <- &SchedulerError{
-					Err:  err.Error(),
-					Node: p.ironicNode.UUID,
-				}
-				continue
-			}
-			log.Infof("finished tempering node: %s", p.ironicNode.Name)
+
+			go r.run([]func(n *model.IronicNode) error{
+
+				p.clientOpenstack.CreateDNSRecordFor,
+				p.clientRedfish.LoadRedfishInfo,
+				p.clientInspector.CreateIronicNode,
+				p.clientOpenstack.CheckIronicNodeCreated,
+				p.clientOpenstack.UpdateNode,
+				p.clientOpenstack.PowerNodeOn,
+				p.clientOpenstack.ValidateNode,
+				p.clientOpenstack.WaitForNovaPropagation,
+				p.clientOpenstack.CreateNodeTestDeployment,
+			}, p)
 		}
 		select {
 		case <-ticker.C:
@@ -130,6 +82,25 @@ loop:
 			break loop
 		}
 	}
+}
+
+func (r Scheduler) run(fns []func(n *model.IronicNode) error, p *Provisioner) (err error) {
+	log.Infof("tempering node %s", p.ironicNode.Name)
+	for _, fn := range fns {
+		if err = fn(&p.ironicNode); err != nil {
+			if _, ok := err.(*clients.NodeAlreadyExists); ok {
+				log.Infof("Node %s already exists, nothing to temper", p.ironicNode.Name)
+				break
+			}
+			r.erroHandler.Errors <- &SchedulerError{
+				Err:  err.Error(),
+				Node: &p.ironicNode,
+			}
+			break
+		}
+	}
+	log.Infof("finished tempering node: %s", p.ironicNode.Name)
+	return
 }
 
 func (r Scheduler) loadNodes() (nodes []model.IronicNode, err error) {
@@ -167,8 +138,4 @@ func (r Scheduler) getProvisioner(node model.IronicNode) (p *Provisioner, err er
 		r.provisoners[node.Name] = p
 	}
 	return
-}
-
-func (r Scheduler) updateNetbox(d clients.InspectorCallbackData) {
-	// update provision_state
 }

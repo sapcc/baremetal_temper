@@ -15,10 +15,11 @@ type RedfishClient struct {
 	Password string
 	client   *gofish.APIClient
 	service  *gofish.Service
-	data     *InspectorCallbackData
+	data     *model.InspectonData
+	node     *model.IronicNode
 }
 
-func (r RedfishClient) LoadRedfishInfo(n model.IronicNode) (i *InspectorCallbackData, err error) {
+func (r RedfishClient) LoadRedfishInfo(n *model.IronicNode) (err error) {
 	cfg := gofish.ClientConfig{
 		Endpoint:  fmt.Sprintf("https://%s", n.Host),
 		Username:  r.User,
@@ -30,21 +31,22 @@ func (r RedfishClient) LoadRedfishInfo(n model.IronicNode) (i *InspectorCallback
 	if err != nil {
 		return
 	}
+	r.node = n
 	defer client.Logout()
 	r.client = client
-	r.data = &InspectorCallbackData{}
+	r.data = &model.InspectonData{}
 	r.service = client.Service
-	if err = r.setBMCAddress(n.Host); err != nil {
+	if err = r.setBMCAddress(); err != nil {
 		return
 	}
 	if err = r.setInventory(); err != nil {
 		return
 	}
-	i = r.data
+	n.InspectionData = *r.data
 	return
 }
 
-func (r RedfishClient) setBMCAddress(host string) (err error) {
+func (r RedfishClient) setBMCAddress() (err error) {
 	m, err := r.service.Managers()
 	if err != nil && len(m) == 0 {
 		return fmt.Errorf("cannot set bmc address")
@@ -57,7 +59,7 @@ func (r RedfishClient) setBMCAddress(host string) (err error) {
 	if err != nil || len(addr) == 0 {
 		return
 	}
-	if host == addr[0] {
+	if r.node.Host == addr[0] {
 		r.data.Inventory.BmcAddress = addr[0]
 		return
 	}
@@ -94,16 +96,17 @@ func (r RedfishClient) setInventory() (err error) {
 }
 
 func (r RedfishClient) setMemory(s *redfish.ComputerSystem) (err error) {
-	r.data.Inventory.Memory.Total = s.MemorySummary.TotalSystemMemoryGiB
+	//r.data.Inventory.Memory.Total = s.MemorySummary.TotalSystemMemoryGiB
+	r.data.Inventory.Memory.PhysicalMb = 1024 * s.MemorySummary.TotalSystemMemoryGiB
 	return
 }
 
 func (r RedfishClient) setDisks(s *redfish.ComputerSystem) (err error) {
 	st, err := s.Storage()
-	rootDisk := RootDisk{
+	rootDisk := model.RootDisk{
 		Rotational: true,
 	}
-	r.data.Inventory.Disks = make([]Disk, 0)
+	r.data.Inventory.Disks = make([]model.Disk, 0)
 	for _, s := range st {
 		ds, err := s.Drives()
 		if err != nil {
@@ -114,7 +117,7 @@ func (r RedfishClient) setDisks(s *redfish.ComputerSystem) (err error) {
 			if s.RotationSpeedRPM == 0 {
 				rotational = false
 			}
-			disk := Disk{
+			disk := model.Disk{
 				Name:       s.Name,
 				Model:      s.Model,
 				Vendor:     s.Manufacturer,
@@ -145,7 +148,7 @@ func (r RedfishClient) setCPUs(s *redfish.ComputerSystem) (err error) {
 		return
 	}
 	r.data.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount
-	r.data.Inventory.CPU.Architecture = string(cpu[0].InstructionSet)
+	r.data.Inventory.CPU.Architecture = strings.Replace(string(cpu[0].InstructionSet), "-", "_", 1)
 	return
 }
 
@@ -157,7 +160,7 @@ func (r RedfishClient) setNetworkDevicesData(s *redfish.ComputerSystem) (err err
 	r.data.Inventory.Boot.PxeInterface = ethInt[0].MACAddress
 	r.data.BootInterface = "01-" + strings.ReplaceAll(ethInt[0].MACAddress, ":", "-")
 	r.data.Inventory.Boot.CurrentBootMode = "bios"
-	r.data.Inventory.Interfaces = make([]Interface, len(ethInt))
+	r.data.Inventory.Interfaces = make([]model.Interface, len(ethInt))
 	for i, e := range ethInt {
 		r.data.Inventory.Interfaces[i].MacAddress = e.MACAddress
 		r.data.Inventory.Interfaces[i].Name = e.ID

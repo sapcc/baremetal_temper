@@ -46,6 +46,10 @@ func main() {
 		log.Error(err)
 		os.Exit(0)
 	}
-	r := provision.NewScheduler(ctx, cfg)
+	r, err := provision.NewScheduler(ctx, cfg)
+	if err != nil {
+		log.Error(err)
+		os.Exit(0)
+	}
 	r.Start(opts.CheckInterval)
 }
