@@ -62,18 +62,18 @@ loop:
 			}
 
 			go r.run([]func(n *model.IronicNode) error{
-
 				p.clientOpenstack.CreateDNSRecordFor,
 				p.clientRedfish.LoadRedfishInfo,
 				p.clientInspector.CreateIronicNode,
 				p.clientOpenstack.CheckIronicNodeCreated,
-				p.clientOpenstack.UpdateNode,
+				p.clientOpenstack.ApplyRules,
 				p.clientOpenstack.ValidateNode,
 				p.clientOpenstack.PowerNodeOn,
 				p.clientOpenstack.ProvideNode,
 				p.clientOpenstack.WaitForNovaPropagation,
 				p.clientOpenstack.CreateNodeTestDeployment,
 				p.clientOpenstack.DeleteNodeTestDeployment,
+				p.clientOpenstack.PrepareNode,
 			}, p)
 		}
 		select {

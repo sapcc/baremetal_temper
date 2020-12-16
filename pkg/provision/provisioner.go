@@ -4,6 +4,8 @@ import (
 	"github.com/sapcc/ironic_temper/pkg/clients"
 	"github.com/sapcc/ironic_temper/pkg/config"
 	"github.com/sapcc/ironic_temper/pkg/model"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Provisioner struct {
@@ -14,11 +16,14 @@ type Provisioner struct {
 }
 
 func NewProvisioner(node model.IronicNode, cfg config.Config) (*Provisioner, error) {
-	clientIronic, err := clients.NewClient(node, cfg)
+	ctxLogger := log.WithFields(log.Fields{
+		"node": node.Name,
+	})
+	openstackClient, err := clients.NewClient(node, cfg, ctxLogger)
 	if err != nil {
 		return nil, err
 	}
-	clientRedfish := clients.RedfishClient{User: cfg.Redfish.User, Password: cfg.Redfish.Password}
+	clientRedfish := clients.RedfishClient{User: cfg.Redfish.User, Password: cfg.Redfish.Password, Log: ctxLogger}
 	clientInspector := clients.InspectorClient{Host: cfg.Inspector.Host}
-	return &Provisioner{node, clientIronic, clientRedfish, clientInspector}, nil
+	return &Provisioner{node, openstackClient, clientRedfish, clientInspector}, nil
 }

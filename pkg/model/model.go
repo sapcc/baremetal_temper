@@ -73,7 +73,7 @@ type Disk struct {
 }
 
 type Memory struct {
-	PhysicalMb float32 `json:"physical_mb"`
+	PhysicalMb int     `json:"physical_mb"`
 	Total      float32 `json:"total"`
 }
 

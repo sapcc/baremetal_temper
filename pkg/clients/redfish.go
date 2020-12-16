@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/sapcc/ironic_temper/pkg/model"
+	log "github.com/sirupsen/logrus"
 	"github.com/stmcginnis/gofish"
 	"github.com/stmcginnis/gofish/redfish"
 )
@@ -17,6 +18,7 @@ type RedfishClient struct {
 	service  *gofish.Service
 	data     *model.InspectonData
 	node     *model.IronicNode
+	Log      *log.Entry
 }
 
 func (r RedfishClient) LoadRedfishInfo(n *model.IronicNode) (err error) {
@@ -96,8 +98,11 @@ func (r RedfishClient) setInventory() (err error) {
 }
 
 func (r RedfishClient) setMemory(s *redfish.ComputerSystem) (err error) {
-	//r.data.Inventory.Memory.Total = s.MemorySummary.TotalSystemMemoryGiB
-	r.data.Inventory.Memory.PhysicalMb = 1024 * s.MemorySummary.TotalSystemMemoryGiB
+	mem, err := s.Memory()
+	if err != nil {
+		return
+	}
+	r.data.Inventory.Memory.PhysicalMb = calcTotalMemory(mem)
 	return
 }
 
@@ -118,15 +123,16 @@ func (r RedfishClient) setDisks(s *redfish.ComputerSystem) (err error) {
 				rotational = false
 			}
 			disk := model.Disk{
-				Name:       s.Name,
-				Model:      s.Model,
-				Vendor:     s.Manufacturer,
-				Size:       s.CapacityBytes,
+				Name:   s.Name,
+				Model:  s.Model,
+				Vendor: s.Manufacturer,
+				//inspector converts bytes to gibibyte
+				Size:       int64(float64(s.CapacityBytes) * 1.074),
 				Rotational: rotational,
 			}
 
 			if s.CapacityBytes > rootDisk.Size {
-				rootDisk.Size = s.CapacityBytes
+				rootDisk.Size = int64(float64(s.CapacityBytes) * 1.074)
 				rootDisk.Name = s.Name
 				rootDisk.Model = s.Model
 				rootDisk.Vendor = s.Manufacturer
@@ -147,7 +153,7 @@ func (r RedfishClient) setCPUs(s *redfish.ComputerSystem) (err error) {
 	if err != nil || len(cpu) == 0 {
 		return
 	}
-	r.data.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount
+	r.data.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount / s.ProcessorSummary.Count
 	r.data.Inventory.CPU.Architecture = strings.Replace(string(cpu[0].InstructionSet), "-", "_", 1)
 	return
 }

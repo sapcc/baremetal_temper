@@ -1,8 +1,9 @@
 package config
 
 import (
-	log "github.com/sirupsen/logrus"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Options passed via cmd line
@@ -10,6 +11,7 @@ type Options struct {
 	LogLevelValue  LogLevelValue
 	Version        string
 	ConfigFilePath string
+	RulesFilePath  string
 	CheckInterval  time.Duration
 }
 
@@ -17,7 +19,7 @@ type LogLevelValue struct {
 	LogLevel log.Level
 }
 
-func (l LogLevelValue) String()  string {
+func (l LogLevelValue) String() string {
 	return l.LogLevel.String()
 }
 

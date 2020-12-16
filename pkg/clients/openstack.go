@@ -1,9 +1,12 @@
 package clients
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/sapcc/ironic_temper/pkg/config"
@@ -28,10 +31,11 @@ import (
 
 type Client struct {
 	IronicClient  *gophercloud.ServiceClient
-	DnsClient     *gophercloud.ServiceClient
+	DNSClient     *gophercloud.ServiceClient
 	ComputeClient *gophercloud.ServiceClient
 	Domain        string
 	log           *log.Entry
+	cfg           config.Config
 }
 
 type NodeNotFoundError struct {
@@ -42,10 +46,7 @@ func (n *NodeNotFoundError) Error() string {
 	return n.Err
 }
 
-func NewClient(node model.IronicNode, cfg config.Config) (*Client, error) {
-	ctxLogger := log.WithFields(log.Fields{
-		"node": node.Name,
-	})
+func NewClient(node model.IronicNode, cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 	provider, err := newProviderClient(cfg.IronicAuth)
 	if err != nil {
 		return nil, err
@@ -70,7 +71,7 @@ func NewClient(node model.IronicNode, cfg config.Config) (*Client, error) {
 		return nil, err
 	}
 	iclient.Microversion = version.Version
-	return &Client{IronicClient: iclient, DnsClient: dnsClient, ComputeClient: cclient, Domain: cfg.Domain, log: ctxLogger}, nil
+	return &Client{IronicClient: iclient, DNSClient: dnsClient, ComputeClient: cclient, Domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
 }
 
 func newProviderClient(i config.IronicAuth) (pc *gophercloud.ProviderClient, err error) {
@@ -110,71 +111,28 @@ func (c *Client) CheckIronicNodeCreated(n *model.IronicNode) error {
 	return nil
 }
 
-func (c *Client) UpdateNode(n *model.IronicNode) (err error) {
+func (c *Client) ApplyRules(n *model.IronicNode) (err error) {
 	c.log.Info("updating node")
-	kernel, err := c.getImageID("fedipa-ussuri-kernel")
-	ramdisk, err := c.getImageID("fedipa-ussuri-ramdisk")
+	rules, err := c.getRules(n)
 	if err != nil {
 		return
 	}
-	updateNode := nodes.UpdateOpts{
-		nodes.UpdateOperation{
-			Op:    nodes.ReplaceOp,
-			Path:  "/name",
-			Value: n.Name,
-		},
-		nodes.UpdateOperation{
-			Op:    nodes.ReplaceOp,
-			Path:  "/resource_class",
-			Value: "inspection_test",
-		},
-		nodes.UpdateOperation{
-			Op:    nodes.AddOp,
-			Path:  "/driver_info/deploy_kernel",
-			Value: kernel,
-		},
-		nodes.UpdateOperation{
-			Op:    nodes.AddOp,
-			Path:  "/driver_info/deploy_ramdisk",
-			Value: ramdisk,
-		},
-		nodes.UpdateOperation{
-			Op:    nodes.AddOp,
-			Path:  "/properties/manufacturer",
-			Value: n.InspectionData.Inventory.SystemVendor.Manufacturer,
-		},
-		nodes.UpdateOperation{
-			Op:    nodes.AddOp,
-			Path:  "/properties/serial",
-			Value: n.InspectionData.Inventory.SystemVendor.SerialNumber,
-		},
-		nodes.UpdateOperation{
-			Op:    nodes.AddOp,
-			Path:  "/properties/model",
-			Value: n.InspectionData.Inventory.SystemVendor.ProductName,
-		},
+	updateNode := nodes.UpdateOpts{}
+	updatePorts := ports.UpdateOpts{}
+
+	for _, n := range rules.Properties.Node {
+		updateNode = append(updateNode, nodes.UpdateOperation{
+			Op:    n.Op,
+			Path:  n.Path,
+			Value: n.Value,
+		})
 	}
-	updatePorts := ports.UpdateOpts{
-		ports.UpdateOperation{
-			Op:    ports.AddOp,
-			Path:  "/local_link_connection/switch_id",
-			Value: "aa:bb:cc:dd:ee:ff",
-		},
-		ports.UpdateOperation{
-			Op:    ports.AddOp,
-			Path:  "/local_link_connection/port_id",
-			Value: "Etherneth1/15",
-		},
-		ports.UpdateOperation{
-			Op:    ports.AddOp,
-			Path:  "/local_link_connection/switch_info",
-			Value: n.Name,
-		},
-		ports.UpdateOperation{
-			Op:    ports.ReplaceOp,
-			Path:  "/pxe_enabled",
-			Value: true,
-		},
+	for _, p := range rules.Properties.Port {
+		updatePorts = append(updatePorts, ports.UpdateOperation{
+			Op:    p.Op,
+			Path:  p.Path,
+			Value: p.Value,
+		})
 	}
 	if err = c.updatePorts(updatePorts, n); err != nil {
 		return
@@ -223,6 +181,7 @@ func (c *Client) updateNode(opts nodes.UpdateOpts, n *model.IronicNode) (err err
 	cf := wait.ConditionFunc(func() (bool, error) {
 		r := nodes.Update(c.IronicClient, n.UUID, opts)
 		_, err = r.Extract()
+		fmt.Println(err)
 		if err != nil {
 			return false, nil
 		}
@@ -240,7 +199,7 @@ func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
 	opts := zones.ListOpts{
 		Name: c.Domain + ".",
 	}
-	allPages, err := zones.List(c.DnsClient, opts).AllPages()
+	allPages, err := zones.List(c.DNSClient, opts).AllPages()
 	if err != nil {
 		return
 	}
@@ -259,7 +218,7 @@ func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
 	recordName := fmt.Sprintf("%s.%s.", name, c.Domain)
 	n.Host = recordName
 
-	_, err = recordsets.Create(c.DnsClient, allZones[0].ID, recordsets.CreateOpts{
+	_, err = recordsets.Create(c.DNSClient, allZones[0].ID, recordsets.CreateOpts{
 		Name:    recordName,
 		TTL:     3600,
 		Type:    "A",
@@ -354,9 +313,9 @@ func (c *Client) WaitForNovaPropagation(n *model.IronicNode) (err error) {
 
 func (c *Client) CreateNodeTestDeployment(n *model.IronicNode) (err error) {
 	c.log.Info("creating node test deployment")
-	fID, err := c.getFlavorID("")
-	iID, err := c.getImageID("")
-	zID, err := c.getConductorZone("")
+	fID, err := c.getFlavorID("inspection_test")
+	iID, err := c.getImageID("ubuntu-20.04-amd64-baremetal")
+	zID, err := c.getConductorZone("nova-compute-ironic-testing")
 	if err != nil {
 		return
 	}
@@ -374,7 +333,7 @@ func (c *Client) CreateNodeTestDeployment(n *model.IronicNode) (err error) {
 		return
 	}
 
-	return servers.WaitForStatus(c.ComputeClient, s.ID, "ACTIVE", 600)
+	return servers.WaitForStatus(c.ComputeClient, s.ID, "ACTIVE", 60)
 }
 
 func (c *Client) DeleteNodeTestDeployment(n *model.IronicNode) (err error) {
@@ -472,5 +431,49 @@ func (c *Client) ProvideNode(n *model.IronicNode) (err error) {
 	})
 
 	return wait.Poll(5*time.Second, 30*time.Second, cfp)
+}
 
+func (c *Client) PrepareNode(n *model.IronicNode) (err error) {
+	conductor := strings.Split(n.Name, "-")[1]
+	opts := nodes.UpdateOpts{
+		nodes.UpdateOperation{
+			Op:   nodes.RemoveOp,
+			Path: "/resource_class",
+		},
+		nodes.UpdateOperation{
+			Op:    nodes.ReplaceOp,
+			Path:  "/conductor_group",
+			Value: conductor,
+		},
+		nodes.UpdateOperation{
+			Op:    nodes.ReplaceOp,
+			Path:  "/maintenance",
+			Value: true,
+		},
+	}
+	return c.updateNode(opts, n)
+}
+
+func (c *Client) getRules(n *model.IronicNode) (r config.Rule, err error) {
+	var funcMap = template.FuncMap{
+		"imageToID": c.getImageID,
+	}
+
+	tmpl := template.New("rules.json").Funcs(funcMap)
+	t, err := tmpl.ParseFiles(c.cfg.RulesPath)
+	if err != nil {
+		return r, fmt.Errorf("Error parsing index: %s", err.Error())
+	}
+
+	out := new(bytes.Buffer)
+	d := map[string]interface{}{
+		"node": n,
+	}
+	err = t.Execute(out, d)
+	if err != nil {
+
+	}
+	json.Unmarshal(out.Bytes(), &r)
+
+	return
 }

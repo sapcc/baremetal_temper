@@ -12,6 +12,7 @@ type Config struct {
 	Inspector       Inspector  `yaml:"inspector"`
 	Redfish         Redfish    `yaml:"redfish"`
 	NetboxNodesPath string     `yaml:"netbox_nodes_path"`
+	RulesPath       string     `yaml:"rules_path"`
 	OsRegion        string     `yaml:"os_region"`
 	Domain          string     `yaml:"domain"`
 	NameSpace       string     `yaml:"namespace"`
