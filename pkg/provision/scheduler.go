@@ -55,7 +55,6 @@ loop:
 			continue
 		}
 		for _, node := range nodes {
-			node.Region = "qa-de-1"
 			p, err := r.getProvisioner(node)
 			if err != nil {
 				r.erroHandler.Errors <- err
@@ -69,10 +68,12 @@ loop:
 				p.clientInspector.CreateIronicNode,
 				p.clientOpenstack.CheckIronicNodeCreated,
 				p.clientOpenstack.UpdateNode,
-				p.clientOpenstack.PowerNodeOn,
 				p.clientOpenstack.ValidateNode,
+				p.clientOpenstack.PowerNodeOn,
+				p.clientOpenstack.ProvideNode,
 				p.clientOpenstack.WaitForNovaPropagation,
 				p.clientOpenstack.CreateNodeTestDeployment,
+				p.clientOpenstack.DeleteNodeTestDeployment,
 			}, p)
 		}
 		select {

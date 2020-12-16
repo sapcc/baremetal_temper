@@ -14,7 +14,7 @@ type Provisioner struct {
 }
 
 func NewProvisioner(node model.IronicNode, cfg config.Config) (*Provisioner, error) {
-	clientIronic, err := clients.NewClient(cfg.OsRegion, cfg.IronicAuth, cfg.Domain)
+	clientIronic, err := clients.NewClient(node, cfg)
 	if err != nil {
 		return nil, err
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/recordsets"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
 	"github.com/gophercloud/gophercloud/pagination"
+	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -30,6 +31,7 @@ type Client struct {
 	DnsClient     *gophercloud.ServiceClient
 	ComputeClient *gophercloud.ServiceClient
 	Domain        string
+	log           *log.Entry
 }
 
 type NodeNotFoundError struct {
@@ -40,21 +42,24 @@ func (n *NodeNotFoundError) Error() string {
 	return n.Err
 }
 
-func NewClient(region string, i config.IronicAuth, domain string) (*Client, error) {
-	provider, err := newProviderClient(i)
+func NewClient(node model.IronicNode, cfg config.Config) (*Client, error) {
+	ctxLogger := log.WithFields(log.Fields{
+		"node": node.Name,
+	})
+	provider, err := newProviderClient(cfg.IronicAuth)
 	if err != nil {
 		return nil, err
 	}
 	iclient, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
-		Region: region,
+		Region: cfg.OsRegion,
 	})
 
 	dnsClient, err := openstack.NewDNSV2(provider, gophercloud.EndpointOpts{
-		Region: region,
+		Region: cfg.OsRegion,
 	})
 
 	cclient, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
-		Region: region,
+		Region: cfg.OsRegion,
 	})
 
 	if err != nil {
@@ -65,7 +70,7 @@ func NewClient(region string, i config.IronicAuth, domain string) (*Client, erro
 		return nil, err
 	}
 	iclient.Microversion = version.Version
-	return &Client{IronicClient: iclient, DnsClient: dnsClient, ComputeClient: cclient, Domain: domain}, nil
+	return &Client{IronicClient: iclient, DnsClient: dnsClient, ComputeClient: cclient, Domain: cfg.Domain, log: ctxLogger}, nil
 }
 
 func newProviderClient(i config.IronicAuth) (pc *gophercloud.ProviderClient, err error) {
@@ -91,17 +96,12 @@ func newProviderClient(i config.IronicAuth) (pc *gophercloud.ProviderClient, err
 	return pc, nil
 }
 
-// GetNodeUUIDByName gets node's uuid by node name
-func (c *Client) GetNodeByUUID(uuid string) (node *nodes.Node, err error) {
-	r := nodes.Get(c.IronicClient, uuid)
-	return r.Extract()
-}
-
 func (c *Client) CheckIronicNodeCreated(n *model.IronicNode) error {
+	c.log.Info("checking node creation")
 	if n.UUID != "" {
 		return nil
 	}
-	_, err := c.GetNodeByUUID(n.UUID)
+	_, err := nodes.Get(c.IronicClient, n.UUID).Extract()
 	if err != nil {
 		return &NodeNotFoundError{
 			Err: fmt.Sprintf("could not find node %s", n.UUID),
@@ -111,8 +111,9 @@ func (c *Client) CheckIronicNodeCreated(n *model.IronicNode) error {
 }
 
 func (c *Client) UpdateNode(n *model.IronicNode) (err error) {
-	kernel, err := c.getImageID("")
-	ramdisk, err := c.getImageID("")
+	c.log.Info("updating node")
+	kernel, err := c.getImageID("fedipa-ussuri-kernel")
+	ramdisk, err := c.getImageID("fedipa-ussuri-ramdisk")
 	if err != nil {
 		return
 	}
@@ -230,44 +231,12 @@ func (c *Client) updateNode(opts nodes.UpdateOpts, n *model.IronicNode) (err err
 	return wait.Poll(5*time.Second, 60*time.Second, cf)
 }
 
-func (c *Client) PowerNodeOn(n *model.IronicNode) (err error) {
-	powerStateOpts := nodes.PowerStateOpts{
-		Target: nodes.PowerOn,
-	}
-	r := nodes.ChangePowerState(c.IronicClient, n.UUID, powerStateOpts)
-
-	if r.Err != nil {
-		switch r.Err.(type) {
-		case gophercloud.ErrDefault409:
-			return fmt.Errorf("cannot power on node %s", n.UUID)
-		default:
-			return fmt.Errorf("cannot power on node %s", n.UUID)
-		}
-	}
-
-	cf := wait.ConditionFunc(func() (bool, error) {
-		r := nodes.Get(c.IronicClient, n.UUID)
-		n, err := r.Extract()
-		if err != nil {
-			return false, fmt.Errorf("cannot power on node")
-		}
-		if n.PowerState != string(nodes.PowerOn) {
-			return false, nil
-		}
-		return true, nil
-	})
-	return wait.Poll(5*time.Second, 30*time.Second, cf)
-}
-
-func (c *Client) getNodeByID(id string) (n *nodes.Node, err error) {
-	return nodes.Get(c.IronicClient, id).Extract()
-}
-
 func (c *Client) getAPIVersion() (*apiversions.APIVersion, error) {
 	return apiversions.Get(c.IronicClient, "v1").Extract()
 }
 
 func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
+	c.log.Info("creating dns record")
 	opts := zones.ListOpts{
 		Name: c.Domain + ".",
 	}
@@ -306,21 +275,61 @@ func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
 	return
 }
 
+func (c *Client) PowerNodeOn(n *model.IronicNode) (err error) {
+	c.log.Info("powering on node")
+	powerStateOpts := nodes.PowerStateOpts{
+		Target: nodes.PowerOn,
+	}
+	r := nodes.ChangePowerState(c.IronicClient, n.UUID, powerStateOpts)
+
+	if r.Err != nil {
+		switch r.Err.(type) {
+		case gophercloud.ErrDefault409:
+			return fmt.Errorf("cannot power on node %s", n.UUID)
+		default:
+			return fmt.Errorf("cannot power on node %s", n.UUID)
+		}
+	}
+
+	cf := wait.ConditionFunc(func() (bool, error) {
+		r := nodes.Get(c.IronicClient, n.UUID)
+		n, err := r.Extract()
+		if err != nil {
+			return false, fmt.Errorf("cannot power on node")
+		}
+		if n.PowerState != string(nodes.PowerOn) {
+			return false, nil
+		}
+		return true, nil
+	})
+	return wait.Poll(5*time.Second, 30*time.Second, cf)
+}
+
 func (c *Client) ValidateNode(n *model.IronicNode) (err error) {
-	if err = c.provideNode(n.UUID); err != nil {
+	c.log.Info("validating node")
+	v, err := nodes.Validate(c.IronicClient, n.UUID).Extract()
+	if err != nil {
 		return
 	}
-	v, err := nodes.Validate(c.IronicClient, n.UUID).Extract()
 	if !v.Inspect.Result {
 		return fmt.Errorf(v.Inspect.Reason)
 	}
 	if !v.Power.Result {
 		return fmt.Errorf(v.Power.Reason)
 	}
+
+	if !v.Management.Result {
+		return fmt.Errorf(v.Management.Reason)
+	}
+
+	if !v.Network.Result {
+		return fmt.Errorf(v.Network.Reason)
+	}
 	return
 }
 
 func (c *Client) WaitForNovaPropagation(n *model.IronicNode) (err error) {
+	c.log.Info("waiting for nova propagation")
 	cfp := wait.ConditionFunc(func() (bool, error) {
 		p, err := hypervisors.List(c.ComputeClient).AllPages()
 		if err != nil {
@@ -344,6 +353,7 @@ func (c *Client) WaitForNovaPropagation(n *model.IronicNode) (err error) {
 }
 
 func (c *Client) CreateNodeTestDeployment(n *model.IronicNode) (err error) {
+	c.log.Info("creating node test deployment")
 	fID, err := c.getFlavorID("")
 	iID, err := c.getImageID("")
 	zID, err := c.getConductorZone("")
@@ -425,10 +435,11 @@ func (c *Client) getConductorZone(name string) (id string, err error) {
 	return
 }
 
-func (c *Client) provideNode(id string) (err error) {
+func (c *Client) ProvideNode(n *model.IronicNode) (err error) {
+	c.log.Info("providing node")
 	cf := func(tp nodes.TargetProvisionState) wait.ConditionFunc {
 		return wait.ConditionFunc(func() (bool, error) {
-			if err = nodes.ChangeProvisionState(c.IronicClient, id, nodes.ProvisionStateOpts{
+			if err = nodes.ChangeProvisionState(c.IronicClient, n.UUID, nodes.ProvisionStateOpts{
 				Target: tp,
 			}).ExtractErr(); err != nil {
 				switch err.(type) {
@@ -449,7 +460,7 @@ func (c *Client) provideNode(id string) (err error) {
 	}
 
 	cfp := wait.ConditionFunc(func() (bool, error) {
-		n, err := nodes.Get(c.IronicClient, id).Extract()
+		n, err := nodes.Get(c.IronicClient, n.UUID).Extract()
 		if err != nil {
 			return true, err
 		}
@@ -461,4 +472,5 @@ func (c *Client) provideNode(id string) (err error) {
 	})
 
 	return wait.Poll(5*time.Second, 30*time.Second, cfp)
+
 }
