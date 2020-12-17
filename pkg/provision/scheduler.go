@@ -38,7 +38,7 @@ func NewScheduler(ctx context.Context, cfg config.Config) (s Scheduler, err erro
 	s = Scheduler{
 		cfg:             cfg,
 		provisoners:     make(map[string]*Provisioner),
-		erroHandler:     NewErrorHandler(ctx, p.clientOpenstack),
+		erroHandler:     NewErrorHandler(ctx, p),
 		ctx:             ctx,
 		nodesInProgress: make(map[string]struct{}),
 	}
@@ -87,6 +87,7 @@ loop:
 				p.clientOpenstack.CreateTestInstance,
 				p.clientOpenstack.DeleteTestInstance,
 				p.clientOpenstack.PrepareNode,
+				p.clientNetbox.SetNodeStatusActive,
 			}, p)
 		}
 		select {

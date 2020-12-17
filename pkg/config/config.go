@@ -11,6 +11,7 @@ type Config struct {
 	IronicAuth      IronicAuth `yaml:"ironic_auth"`
 	Inspector       Inspector  `yaml:"inspector"`
 	Redfish         Redfish    `yaml:"redfish"`
+	Netbox          Netbox     `yaml:"netbox"`
 	NetboxNodesPath string     `yaml:"netbox_nodes_path"`
 	RulesPath       string     `yaml:"rules_path"`
 	OsRegion        string     `yaml:"os_region"`
@@ -34,6 +35,11 @@ type IronicAuth struct {
 	DomainName        string `yaml:"user_domain_name"`
 	ProjectName       string `yaml:"project_name"`
 	ProjectDomainName string `yaml:"domain_name"`
+}
+
+type Netbox struct {
+	Host  string `yaml:"host"`
+	Token string `yaml:"token"`
 }
 
 func GetConfig(opts Options) (cfg Config, err error) {

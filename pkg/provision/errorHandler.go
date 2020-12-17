@@ -3,7 +3,6 @@ package provision
 import (
 	"context"
 
-	"github.com/sapcc/ironic_temper/pkg/clients"
 	"github.com/sapcc/ironic_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 )
@@ -18,16 +17,16 @@ func (n *SchedulerError) Error() string {
 }
 
 type ErrorHandler struct {
-	Errors  chan error
-	ctx     context.Context
-	clients *clients.Client
+	Errors chan error
+	ctx    context.Context
+	p      *Provisioner
 }
 
-func NewErrorHandler(ctx context.Context, c *clients.Client) (e ErrorHandler) {
+func NewErrorHandler(ctx context.Context, p *Provisioner) (e ErrorHandler) {
 	errors := make(chan error, 0)
 	e.Errors = errors
 	e.ctx = ctx
-	e.clients = c
+	e.p = p
 	go e.initHandler()
 	return e
 }
@@ -39,12 +38,15 @@ func (e ErrorHandler) initHandler() {
 			if serr, ok := err.(*SchedulerError); ok {
 				log.Errorf("error tempering node %s. err: %s", serr.Node.UUID, serr.Err)
 				if serr.Node.InstanceUUID != "" {
-					if err = e.clients.DeleteTestInstance(serr.Node); err != nil {
+					if err = e.p.clientOpenstack.DeleteTestInstance(serr.Node); err != nil {
 						log.Error("cannot delete compute instance %s. err: %s", serr.Node.InstanceUUID, err.Error())
 					}
 				}
-				if err = e.clients.DeleteNode(serr.Node); err != nil {
+				if err = e.p.clientOpenstack.DeleteNode(serr.Node); err != nil {
 					log.Errorf("cannot delete node %s. err: %s", serr.Node.Name, err.Error())
+				}
+				if err = e.p.clientNetbox.SetNodeStatusFailed(serr.Node); err != nil {
+					log.Errorf("cannot set node %s status in netbox. err: %s", serr.Node.Name, err.Error())
 				}
 			} else {
 				log.Error(err.Error())
