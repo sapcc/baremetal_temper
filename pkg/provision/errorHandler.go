@@ -37,9 +37,14 @@ func (e ErrorHandler) initHandler() {
 		select {
 		case err := <-e.Errors:
 			if serr, ok := err.(*SchedulerError); ok {
-				log.Infof("error tempering node %s. err: %s", serr.Node.UUID, serr.Err)
+				log.Errorf("error tempering node %s. err: %s", serr.Node.UUID, serr.Err)
 				if serr.Node.InstanceUUID != "" {
-					e.clients.DeleteNodeTestDeployment(serr.Node)
+					if err = e.clients.DeleteTestInstance(serr.Node); err != nil {
+						log.Error("cannot delete compute instance %s. err: %s", serr.Node.InstanceUUID, err.Error())
+					}
+				}
+				if err = e.clients.DeleteNode(serr.Node); err != nil {
+					log.Errorf("cannot delete node %s. err: %s", serr.Node.Name, err.Error())
 				}
 			} else {
 				log.Error(err.Error())

@@ -23,7 +23,7 @@ func NewProvisioner(node model.IronicNode, cfg config.Config) (*Provisioner, err
 	if err != nil {
 		return nil, err
 	}
-	clientRedfish := clients.NewRedfishClient(cfg, node.Host, ctxLogger)
+	clientRedfish := clients.NewRedfishClient(cfg, node.IP, ctxLogger)
 	clientInspector := clients.NewInspectorClient(cfg, ctxLogger)
 	return &Provisioner{node, openstackClient, clientRedfish, clientInspector}, nil
 }

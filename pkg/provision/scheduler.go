@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io/ioutil"
+	"sync"
 	"time"
 
 	"github.com/sapcc/ironic_temper/pkg/clients"
@@ -18,31 +19,34 @@ type NetboxDiscovery struct {
 	Labels  map[string]string `json:"labels"`
 }
 
-// Redfish is ...
+// Scheduler is ...
 type Scheduler struct {
-	cfg         config.Config
-	provisoners map[string]*Provisioner
-	erroHandler ErrorHandler
-	ctx         context.Context
+	cfg             config.Config
+	provisoners     map[string]*Provisioner
+	erroHandler     ErrorHandler
+	ctx             context.Context
+	nodesInProgress map[string]struct{}
+	sync.RWMutex
 }
 
-// New Redfish Instance
+// NewScheduler New Redfish Instance
 func NewScheduler(ctx context.Context, cfg config.Config) (s Scheduler, err error) {
 	p, err := NewProvisioner(model.IronicNode{}, cfg)
 	if err != nil {
 		return
 	}
 	s = Scheduler{
-		cfg:         cfg,
-		provisoners: make(map[string]*Provisioner),
-		erroHandler: NewErrorHandler(ctx, p.clientOpenstack),
-		ctx:         ctx,
+		cfg:             cfg,
+		provisoners:     make(map[string]*Provisioner),
+		erroHandler:     NewErrorHandler(ctx, p.clientOpenstack),
+		ctx:             ctx,
+		nodesInProgress: make(map[string]struct{}),
 	}
 	return
 }
 
-// Start ...
-func (r Scheduler) Start(d time.Duration) {
+//Start ...
+func (r *Scheduler) Start(d time.Duration) {
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 
@@ -61,6 +65,15 @@ loop:
 				continue
 			}
 
+			r.Lock()
+			if _, ok := r.nodesInProgress[node.Name]; ok {
+				r.Unlock()
+				log.Infof("node %s is already being tempered", node.Name)
+				continue
+			}
+			r.nodesInProgress[node.Name] = struct{}{}
+			r.Unlock()
+
 			go r.run([]func(n *model.IronicNode) error{
 				p.clientOpenstack.CreateDNSRecordFor,
 				p.clientRedfish.LoadRedfishInfo,
@@ -71,8 +84,8 @@ loop:
 				p.clientOpenstack.PowerNodeOn,
 				p.clientOpenstack.ProvideNode,
 				p.clientOpenstack.WaitForNovaPropagation,
-				p.clientOpenstack.CreateNodeTestDeployment,
-				p.clientOpenstack.DeleteNodeTestDeployment,
+				p.clientOpenstack.CreateTestInstance,
+				p.clientOpenstack.DeleteTestInstance,
 				p.clientOpenstack.PrepareNode,
 			}, p)
 		}
@@ -85,7 +98,7 @@ loop:
 	}
 }
 
-func (r Scheduler) run(fns []func(n *model.IronicNode) error, p *Provisioner) (err error) {
+func (r *Scheduler) run(fns []func(n *model.IronicNode) error, p *Provisioner) (err error) {
 	log.Infof("tempering node %s", p.ironicNode.Name)
 	for _, fn := range fns {
 		if err = fn(&p.ironicNode); err != nil {
@@ -101,10 +114,13 @@ func (r Scheduler) run(fns []func(n *model.IronicNode) error, p *Provisioner) (e
 		}
 	}
 	log.Infof("finished tempering node: %s", p.ironicNode.Name)
+	r.Lock()
+	delete(r.nodesInProgress, p.ironicNode.Name)
+	defer r.Unlock()
 	return
 }
 
-func (r Scheduler) loadNodes() (nodes []model.IronicNode, err error) {
+func (r *Scheduler) loadNodes() (nodes []model.IronicNode, err error) {
 	d, err := ioutil.ReadFile(r.cfg.NetboxNodesPath)
 	if err != nil {
 		return
@@ -129,7 +145,7 @@ func (r Scheduler) loadNodes() (nodes []model.IronicNode, err error) {
 	return
 }
 
-func (r Scheduler) getProvisioner(node model.IronicNode) (p *Provisioner, err error) {
+func (r *Scheduler) getProvisioner(node model.IronicNode) (p *Provisioner, err error) {
 	p, ok := r.provisoners[node.Name]
 	if ok {
 		return

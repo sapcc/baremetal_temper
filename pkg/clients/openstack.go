@@ -311,7 +311,7 @@ func (c *Client) WaitForNovaPropagation(n *model.IronicNode) (err error) {
 	return wait.Poll(10*time.Second, 600*time.Second, cfp)
 }
 
-func (c *Client) CreateNodeTestDeployment(n *model.IronicNode) (err error) {
+func (c *Client) CreateTestInstance(n *model.IronicNode) (err error) {
 	c.log.Info("creating node test deployment")
 	fID, err := c.getFlavorID("inspection_test")
 	iID, err := c.getImageID("ubuntu-20.04-amd64-baremetal")
@@ -336,8 +336,11 @@ func (c *Client) CreateNodeTestDeployment(n *model.IronicNode) (err error) {
 	return servers.WaitForStatus(c.ComputeClient, s.ID, "ACTIVE", 60)
 }
 
-func (c *Client) DeleteNodeTestDeployment(n *model.IronicNode) (err error) {
-	return servers.ForceDelete(c.ComputeClient, n.InstanceUUID).ExtractErr()
+func (c *Client) DeleteTestInstance(n *model.IronicNode) (err error) {
+	if err = servers.ForceDelete(c.ComputeClient, n.InstanceUUID).ExtractErr(); err != nil {
+		return
+	}
+	return servers.WaitForStatus(c.ComputeClient, n.InstanceUUID, "DELETED", 60)
 }
 
 func (c *Client) getImageID(name string) (id string, err error) {
@@ -452,6 +455,18 @@ func (c *Client) PrepareNode(n *model.IronicNode) (err error) {
 		},
 	}
 	return c.updateNode(opts, n)
+}
+
+func (c *Client) DeleteNode(n *model.IronicNode) (err error) {
+	cfp := wait.ConditionFunc(func() (bool, error) {
+		err = nodes.Delete(c.IronicClient, n.UUID).ExtractErr()
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+
+	return wait.Poll(5*time.Second, 30*time.Second, cfp)
 }
 
 func (c *Client) getRules(n *model.IronicNode) (r config.Rule, err error) {
