@@ -19,8 +19,7 @@ type Config struct {
 }
 
 type Inspector struct {
-	Host     string `yaml:"host"`
-	Callback string `yaml:"callback"`
+	Host string `yaml:"host"`
 }
 
 type Redfish struct {

@@ -11,19 +11,19 @@ import (
 type Provisioner struct {
 	ironicNode      model.IronicNode
 	clientOpenstack *clients.Client
-	clientRedfish   clients.RedfishClient
-	clientInspector clients.InspectorClient
+	clientRedfish   *clients.RedfishClient
+	clientInspector *clients.InspectorClient
 }
 
 func NewProvisioner(node model.IronicNode, cfg config.Config) (*Provisioner, error) {
 	ctxLogger := log.WithFields(log.Fields{
 		"node": node.Name,
 	})
-	openstackClient, err := clients.NewClient(node, cfg, ctxLogger)
+	openstackClient, err := clients.NewClient(cfg, ctxLogger)
 	if err != nil {
 		return nil, err
 	}
-	clientRedfish := clients.RedfishClient{User: cfg.Redfish.User, Password: cfg.Redfish.Password, Log: ctxLogger}
-	clientInspector := clients.InspectorClient{Host: cfg.Inspector.Host}
+	clientRedfish := clients.NewRedfishClient(cfg, node.Host, ctxLogger)
+	clientInspector := clients.NewInspectorClient(cfg, ctxLogger)
 	return &Provisioner{node, openstackClient, clientRedfish, clientInspector}, nil
 }

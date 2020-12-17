@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/sapcc/ironic_temper/pkg/config"
 	"github.com/sapcc/ironic_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 	"github.com/stmcginnis/gofish"
@@ -12,24 +13,30 @@ import (
 )
 
 type RedfishClient struct {
-	User     string
-	Password string
-	client   *gofish.APIClient
-	service  *gofish.Service
-	data     *model.InspectonData
-	node     *model.IronicNode
-	Log      *log.Entry
+	gCfg    gofish.ClientConfig
+	client  *gofish.APIClient
+	service *gofish.Service
+	data    *model.InspectonData
+	node    *model.IronicNode
+	log     *log.Entry
+}
+
+func NewRedfishClient(cfg config.Config, host string, ctxLogger *log.Entry) *RedfishClient {
+	return &RedfishClient{
+		gCfg: gofish.ClientConfig{
+			Endpoint:  fmt.Sprintf("https://%s", host),
+			Username:  cfg.Redfish.User,
+			Password:  cfg.Redfish.Password,
+			Insecure:  true,
+			BasicAuth: true,
+		},
+		log: ctxLogger,
+	}
 }
 
 func (r RedfishClient) LoadRedfishInfo(n *model.IronicNode) (err error) {
-	cfg := gofish.ClientConfig{
-		Endpoint:  fmt.Sprintf("https://%s", n.Host),
-		Username:  r.User,
-		Password:  r.Password,
-		Insecure:  true,
-		BasicAuth: true,
-	}
-	client, err := gofish.Connect(cfg)
+	r.log.Info("calling redfish api to load node info")
+	client, err := gofish.Connect(r.gCfg)
 	if err != nil {
 		return
 	}

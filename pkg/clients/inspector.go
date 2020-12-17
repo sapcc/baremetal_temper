@@ -10,6 +10,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/sapcc/ironic_temper/pkg/config"
 	"github.com/sapcc/ironic_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 )
@@ -31,12 +32,21 @@ type ErrorMessage struct {
 }
 
 type InspectorClient struct {
-	Host string
+	log  *log.Entry
+	host string
+}
+
+func NewInspectorClient(cfg config.Config, ctxLogger *log.Entry) *InspectorClient {
+	return &InspectorClient{
+		log:  ctxLogger,
+		host: cfg.Inspector.Host,
+	}
 }
 
 func (i InspectorClient) CreateIronicNode(in *model.IronicNode) (err error) {
+	i.log.Info("calling inspector api for node creation")
 	client := &http.Client{}
-	u, err := url.Parse(fmt.Sprintf("http://%s", i.Host))
+	u, err := url.Parse(fmt.Sprintf("http://%s", i.host))
 	if err != nil {
 		return
 	}

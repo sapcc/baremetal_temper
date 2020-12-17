@@ -46,7 +46,7 @@ func (n *NodeNotFoundError) Error() string {
 	return n.Err
 }
 
-func NewClient(node model.IronicNode, cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
+func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 	provider, err := newProviderClient(cfg.IronicAuth)
 	if err != nil {
 		return nil, err
