@@ -15,6 +15,7 @@ import (
 
 type NetboxClient struct {
 	client *netboxclient.NetBoxAPI
+	log    *log.Entry
 }
 
 func NewNetboxClient(cfg config.Config, ctxLogger *log.Entry) (n *NetboxClient, err error) {
@@ -26,17 +27,23 @@ func NewNetboxClient(cfg config.Config, ctxLogger *log.Entry) (n *NetboxClient, 
 	transport := runtimeclient.NewWithClient(cfg.Netbox.Host, netboxclient.DefaultBasePath, []string{"https"}, tlsClient)
 	transport.DefaultAuthentication = runtimeclient.APIKeyAuth("Authorization", "header", fmt.Sprintf("Token %v", cfg.Netbox.Token))
 	n.client = netboxclient.New(transport, nil)
+	n.log = ctxLogger
 	return
 }
 
-func (n *NetboxClient) SetNodeStatusActive(i *model.IronicNode) (err error) {
+//SetNodeStatusActive does not return error to not trigger errorhandler and cleanup of node
+func (n *NetboxClient) SetNodeStatusActive(i *model.IronicNode) error {
 	id, err := strconv.ParseInt(i.UUID, 10, 64)
 	if err != nil {
-		return
+		log.Error(err)
 	}
-	return n.setNodeStatus(id, models.DeviceWithConfigContextStatusValueActive)
+	if err = n.setNodeStatus(id, models.DeviceWithConfigContextStatusValueActive); err != nil {
+		log.Error(err)
+	}
+	return nil
 }
 
+//SetNodeStatusFailed sets status to failed in netbox
 func (n *NetboxClient) SetNodeStatusFailed(i *model.IronicNode) (err error) {
 	id, err := strconv.ParseInt(i.UUID, 10, 64)
 	if err != nil {
