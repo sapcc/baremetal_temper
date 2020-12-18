@@ -11,7 +11,7 @@ type Config struct {
 	IronicAuth      IronicAuth `yaml:"ironic_auth"`
 	Inspector       Inspector  `yaml:"inspector"`
 	Redfish         Redfish    `yaml:"redfish"`
-	Netbox          Netbox     `yaml:"netbox"`
+	NetboxAuth      NetboxAuth `yaml:"netbox_auth"`
 	NetboxNodesPath string     `yaml:"netbox_nodes_path"`
 	RulesPath       string     `yaml:"rules_path"`
 	OsRegion        string     `yaml:"os_region"`
@@ -37,7 +37,7 @@ type IronicAuth struct {
 	ProjectDomainName string `yaml:"domain_name"`
 }
 
-type Netbox struct {
+type NetboxAuth struct {
 	Host  string `yaml:"host"`
 	Token string `yaml:"token"`
 }

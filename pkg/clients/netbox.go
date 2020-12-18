@@ -24,10 +24,12 @@ func NewNetboxClient(cfg config.Config, ctxLogger *log.Entry) (n *NetboxClient, 
 		return
 	}
 
-	transport := runtimeclient.NewWithClient(cfg.Netbox.Host, netboxclient.DefaultBasePath, []string{"https"}, tlsClient)
-	transport.DefaultAuthentication = runtimeclient.APIKeyAuth("Authorization", "header", fmt.Sprintf("Token %v", cfg.Netbox.Token))
-	n.client = netboxclient.New(transport, nil)
-	n.log = ctxLogger
+	transport := runtimeclient.NewWithClient(cfg.NetboxAuth.Host, netboxclient.DefaultBasePath, []string{"https"}, tlsClient)
+	transport.DefaultAuthentication = runtimeclient.APIKeyAuth("Authorization", "header", fmt.Sprintf("Token %v", cfg.NetboxAuth.Token))
+	n = &NetboxClient{
+		client: netboxclient.New(transport, nil),
+		log:    ctxLogger,
+	}
 	return
 }
 

@@ -30,7 +30,7 @@ func init() {
 	log.SetLevel(opts.LogLevelValue.LogLevel)
 
 	dsn := os.Getenv("SENTRY_DSN")
-	if dsn == "" {
+	if dsn != "" {
 		hook, err := logrus_sentry.NewSentryHook(dsn, []logrus.Level{
 			logrus.PanicLevel,
 			logrus.FatalLevel,
@@ -50,8 +50,7 @@ func main() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		for sig := range c {
-			log.Error(sig)
+		for range c {
 			cancel()
 			os.Exit(0)
 		}
