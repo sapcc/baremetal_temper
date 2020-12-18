@@ -37,8 +37,15 @@ func (n *NetboxClient) SetNodeStatusActive(i *model.IronicNode) error {
 	if err != nil {
 		log.Error(err)
 	}
-	if err = n.setNodeStatus(id, models.DeviceWithConfigContextStatusValueActive); err != nil {
+
+	p, err := n.updateNode(id, models.WritableDeviceWithConfigContext{
+		Status: models.DeviceWithConfigContextStatusValueActive,
+	})
+	if err != nil {
 		log.Error(err)
+	}
+	if *p.Payload.Status.Value != models.DeviceWithConfigContextStatusValueActive {
+		log.Errorf("cannot update node status in netbox")
 	}
 	return nil
 }
@@ -49,18 +56,23 @@ func (n *NetboxClient) SetNodeStatusFailed(i *model.IronicNode) (err error) {
 	if err != nil {
 		return
 	}
-	return n.setNodeStatus(id, models.DeviceWithConfigContextStatusValueFailed)
-}
-
-func (n *NetboxClient) setNodeStatus(id int64, status string) (err error) {
-	u, err := n.client.Dcim.DcimDevicesUpdate(&dcim.DcimDevicesUpdateParams{
-		ID: id,
-		Data: &models.WritableDeviceWithConfigContext{
-			Status: status,
-		},
-	}, nil)
-	if *u.Payload.Status.Value != status {
+	p, err := n.updateNode(id, models.WritableDeviceWithConfigContext{
+		Status: models.DeviceWithConfigContextStatusValueFailed,
+	})
+	if err != nil {
+		return
+	}
+	if *p.Payload.Status.Value != models.DeviceWithConfigContextStatusValueFailed {
 		return fmt.Errorf("cannot update node status in netbox")
 	}
+	return
+}
+
+func (n *NetboxClient) updateNode(id int64, data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesUpdateOK, err error) {
+	p, err = n.client.Dcim.DcimDevicesUpdate(&dcim.DcimDevicesUpdateParams{
+		ID:   id,
+		Data: &data,
+	}, nil)
+
 	return
 }

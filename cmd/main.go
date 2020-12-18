@@ -8,8 +8,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/evalphobia/logrus_sentry"
 	"github.com/sapcc/ironic_temper/pkg/config"
 	"github.com/sapcc/ironic_temper/pkg/provision"
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -26,6 +28,19 @@ func init() {
 	flag.Parse()
 
 	log.SetLevel(opts.LogLevelValue.LogLevel)
+
+	dsn := os.Getenv("SENTRY_DSN")
+	if dsn == "" {
+		hook, err := logrus_sentry.NewSentryHook(dsn, []logrus.Level{
+			logrus.PanicLevel,
+			logrus.FatalLevel,
+			logrus.ErrorLevel,
+		})
+		if err == nil {
+			log.Info("adding sentry hook")
+			log.AddHook(hook)
+		}
+	}
 }
 
 func main() {
