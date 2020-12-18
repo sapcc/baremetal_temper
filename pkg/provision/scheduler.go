@@ -76,7 +76,7 @@ loop:
 
 			go r.run([]func(n *model.IronicNode) error{
 				p.clientOpenstack.CreateDNSRecordFor,
-				p.clientRedfish.LoadRedfishInventoryForNode,
+				p.clientRedfish.LoadInventoryForNode,
 				p.clientInspector.CreateIronicNode,
 				p.clientOpenstack.CheckIronicNodeCreated,
 				p.clientOpenstack.ApplyRules,
