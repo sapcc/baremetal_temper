@@ -133,14 +133,10 @@ func (r *Scheduler) loadNodes() (nodes []model.IronicNode, err error) {
 	}
 
 	for _, t := range targets {
-		nodeIP := t.Targets[0]
-		nodeName := t.Labels["server_name"]
-		node := model.IronicNode{
-			IP:     nodeIP,
-			Name:   nodeName,
-			Region: r.cfg.OsRegion,
-		}
-		nodes = append(nodes, node)
+		nodes = append(nodes, model.IronicNode{
+			IP:   t.Targets[0],
+			Name: t.Labels["server_name"],
+		})
 	}
 
 	return
