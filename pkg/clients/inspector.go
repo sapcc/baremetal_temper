@@ -15,6 +15,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+//NodeAlreadyExists custom error
 type NodeAlreadyExists struct {
 	Err string
 }
@@ -23,19 +24,23 @@ func (n *NodeAlreadyExists) Error() string {
 	return n.Err
 }
 
+//InspectorErr custom error struct for inspector callback errors
 type InspectorErr struct {
 	Error ErrorMessage `json:"error"`
 }
 
+//ErrorMessage message struct for InspectorErr
 type ErrorMessage struct {
 	Message string `json:"message"`
 }
 
+//InspectorClient is
 type InspectorClient struct {
 	log  *log.Entry
 	host string
 }
 
+//NewInspectorClient creates a ironic-inspector client
 func NewInspectorClient(cfg config.Config, ctxLogger *log.Entry) *InspectorClient {
 	return &InspectorClient{
 		log:  ctxLogger,
@@ -43,6 +48,7 @@ func NewInspectorClient(cfg config.Config, ctxLogger *log.Entry) *InspectorClien
 	}
 }
 
+//CreateIronicNode creates a new ironic node based on the provided ironic model
 func (i InspectorClient) CreateIronicNode(in *model.IronicNode) (err error) {
 	i.log.Info("calling inspector api for node creation")
 	client := &http.Client{}

@@ -13,11 +13,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+//NetboxClient is ..
 type NetboxClient struct {
 	client *netboxclient.NetBoxAPI
 	log    *log.Entry
 }
 
+//NewNetboxClient creates netbox client instance
 func NewNetboxClient(cfg config.Config, ctxLogger *log.Entry) (n *NetboxClient, err error) {
 	tlsClient, err := runtimeclient.TLSClient(runtimeclient.TLSClientOptions{InsecureSkipVerify: true})
 	if err != nil {

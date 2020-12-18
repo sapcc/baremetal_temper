@@ -21,6 +21,7 @@ type RedfishClient struct {
 	log     *log.Entry
 }
 
+//NewRedfishClient creates redfish client
 func NewRedfishClient(cfg config.Config, host string, ctxLogger *log.Entry) *RedfishClient {
 	return &RedfishClient{
 		gCfg: gofish.ClientConfig{
@@ -34,7 +35,8 @@ func NewRedfishClient(cfg config.Config, host string, ctxLogger *log.Entry) *Red
 	}
 }
 
-func (r RedfishClient) LoadRedfishInfo(n *model.IronicNode) (err error) {
+//LoadRedfishInventoryForNode loads the node's redfish inventory
+func (r RedfishClient) LoadRedfishInventoryForNode(n *model.IronicNode) (err error) {
 	r.log.Info("calling redfish api to load node info")
 	client, err := gofish.Connect(r.gCfg)
 	if err != nil {

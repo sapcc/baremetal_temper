@@ -29,15 +29,17 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
+//Client is
 type Client struct {
-	IronicClient  *gophercloud.ServiceClient
-	DNSClient     *gophercloud.ServiceClient
-	ComputeClient *gophercloud.ServiceClient
-	Domain        string
-	log           *log.Entry
-	cfg           config.Config
+	baremetalClient *gophercloud.ServiceClient
+	dnsClient       *gophercloud.ServiceClient
+	computeClient   *gophercloud.ServiceClient
+	domain          string
+	log             *log.Entry
+	cfg             config.Config
 }
 
+//NodeNotFoundError error for missing node
 type NodeNotFoundError struct {
 	Err string
 }
@@ -46,6 +48,7 @@ func (n *NodeNotFoundError) Error() string {
 	return n.Err
 }
 
+//NewClient creates a new client containing different openstack-clients (baremetal, compute, dns)
 func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 	provider, err := newProviderClient(cfg.IronicAuth)
 	if err != nil {
@@ -71,7 +74,7 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 		return nil, err
 	}
 	iclient.Microversion = version.Version
-	return &Client{IronicClient: iclient, DNSClient: dnsClient, ComputeClient: cclient, Domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
+	return &Client{baremetalClient: iclient, dnsClient: dnsClient, computeClient: cclient, domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
 }
 
 func newProviderClient(i config.IronicAuth) (pc *gophercloud.ProviderClient, err error) {
@@ -97,12 +100,13 @@ func newProviderClient(i config.IronicAuth) (pc *gophercloud.ProviderClient, err
 	return pc, nil
 }
 
+//CheckIronicNodeCreated checks if node was created
 func (c *Client) CheckIronicNodeCreated(n *model.IronicNode) error {
 	c.log.Info("checking node creation")
 	if n.UUID != "" {
 		return nil
 	}
-	_, err := nodes.Get(c.IronicClient, n.UUID).Extract()
+	_, err := nodes.Get(c.baremetalClient, n.UUID).Extract()
 	if err != nil {
 		return &NodeNotFoundError{
 			Err: fmt.Sprintf("could not find node %s", n.UUID),
@@ -111,6 +115,7 @@ func (c *Client) CheckIronicNodeCreated(n *model.IronicNode) error {
 	return nil
 }
 
+//ApplyRules applies rules from a json file
 func (c *Client) ApplyRules(n *model.IronicNode) (err error) {
 	c.log.Info("updating node")
 	rules, err := c.getRules(n)
@@ -146,7 +151,7 @@ func (c *Client) updatePorts(opts ports.UpdateOpts, n *model.IronicNode) (err er
 		NodeUUID: n.UUID,
 	}
 
-	l, err := ports.List(c.IronicClient, listOpts).AllPages()
+	l, err := ports.List(c.baremetalClient, listOpts).AllPages()
 	if err != nil {
 		return
 	}
@@ -158,7 +163,7 @@ func (c *Client) updatePorts(opts ports.UpdateOpts, n *model.IronicNode) (err er
 
 	for _, p := range ps {
 		cf := wait.ConditionFunc(func() (bool, error) {
-			_, err = ports.Update(c.IronicClient, p.UUID, opts).Extract()
+			_, err = ports.Update(c.baremetalClient, p.UUID, opts).Extract()
 			if err != nil {
 				switch err.(type) {
 				case gophercloud.ErrDefault409:
@@ -179,7 +184,7 @@ func (c *Client) updatePorts(opts ports.UpdateOpts, n *model.IronicNode) (err er
 
 func (c *Client) updateNode(opts nodes.UpdateOpts, n *model.IronicNode) (err error) {
 	cf := wait.ConditionFunc(func() (bool, error) {
-		r := nodes.Update(c.IronicClient, n.UUID, opts)
+		r := nodes.Update(c.baremetalClient, n.UUID, opts)
 		_, err = r.Extract()
 		fmt.Println(err)
 		if err != nil {
@@ -191,15 +196,16 @@ func (c *Client) updateNode(opts nodes.UpdateOpts, n *model.IronicNode) (err err
 }
 
 func (c *Client) getAPIVersion() (*apiversions.APIVersion, error) {
-	return apiversions.Get(c.IronicClient, "v1").Extract()
+	return apiversions.Get(c.baremetalClient, "v1").Extract()
 }
 
+//CreateDNSRecordFor creates a dns record for the given node if not exists
 func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
 	c.log.Info("creating dns record")
 	opts := zones.ListOpts{
-		Name: c.Domain + ".",
+		Name: c.domain + ".",
 	}
-	allPages, err := zones.List(c.DNSClient, opts).AllPages()
+	allPages, err := zones.List(c.dnsClient, opts).AllPages()
 	if err != nil {
 		return
 	}
@@ -215,10 +221,10 @@ func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
 	}
 
 	name := fmt.Sprintf("%sr-%s", na[0], na[1])
-	recordName := fmt.Sprintf("%s.%s.", name, c.Domain)
+	recordName := fmt.Sprintf("%s.%s.", name, c.domain)
 	n.Host = recordName
 
-	_, err = recordsets.Create(c.DNSClient, allZones[0].ID, recordsets.CreateOpts{
+	_, err = recordsets.Create(c.dnsClient, allZones[0].ID, recordsets.CreateOpts{
 		Name:    recordName,
 		TTL:     3600,
 		Type:    "A",
@@ -234,12 +240,13 @@ func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
 	return
 }
 
+//PowerNodeOn powers on the node
 func (c *Client) PowerNodeOn(n *model.IronicNode) (err error) {
 	c.log.Info("powering on node")
 	powerStateOpts := nodes.PowerStateOpts{
 		Target: nodes.PowerOn,
 	}
-	r := nodes.ChangePowerState(c.IronicClient, n.UUID, powerStateOpts)
+	r := nodes.ChangePowerState(c.baremetalClient, n.UUID, powerStateOpts)
 
 	if r.Err != nil {
 		switch r.Err.(type) {
@@ -251,7 +258,7 @@ func (c *Client) PowerNodeOn(n *model.IronicNode) (err error) {
 	}
 
 	cf := wait.ConditionFunc(func() (bool, error) {
-		r := nodes.Get(c.IronicClient, n.UUID)
+		r := nodes.Get(c.baremetalClient, n.UUID)
 		n, err := r.Extract()
 		if err != nil {
 			return false, fmt.Errorf("cannot power on node")
@@ -264,9 +271,10 @@ func (c *Client) PowerNodeOn(n *model.IronicNode) (err error) {
 	return wait.Poll(5*time.Second, 30*time.Second, cf)
 }
 
+//ValidateNode calls the baremetal validate api
 func (c *Client) ValidateNode(n *model.IronicNode) (err error) {
 	c.log.Info("validating node")
-	v, err := nodes.Validate(c.IronicClient, n.UUID).Extract()
+	v, err := nodes.Validate(c.baremetalClient, n.UUID).Extract()
 	if err != nil {
 		return
 	}
@@ -287,10 +295,12 @@ func (c *Client) ValidateNode(n *model.IronicNode) (err error) {
 	return
 }
 
+//WaitForNovaPropagation calls the hypervisor api to check if new node has been
+//propagated to nova
 func (c *Client) WaitForNovaPropagation(n *model.IronicNode) (err error) {
 	c.log.Info("waiting for nova propagation")
 	cfp := wait.ConditionFunc(func() (bool, error) {
-		p, err := hypervisors.List(c.ComputeClient).AllPages()
+		p, err := hypervisors.List(c.computeClient).AllPages()
 		if err != nil {
 			return true, err
 		}
@@ -311,6 +321,7 @@ func (c *Client) WaitForNovaPropagation(n *model.IronicNode) (err error) {
 	return wait.Poll(10*time.Second, 600*time.Second, cfp)
 }
 
+//CreateTestInstance creates a new test instance on the newly created node
 func (c *Client) CreateTestInstance(n *model.IronicNode) (err error) {
 	c.log.Info("creating node test deployment")
 	fID, err := c.getFlavorID("inspection_test")
@@ -326,25 +337,26 @@ func (c *Client) CreateTestInstance(n *model.IronicNode) (err error) {
 		ImageRef:         iID,
 		AvailabilityZone: fmt.Sprintf("%s::%s", zID, n.UUID),
 	}
-	r := servers.Create(c.ComputeClient, opts)
+	r := servers.Create(c.computeClient, opts)
 	s, err := r.Extract()
 	n.InstanceUUID = s.ID
 	if err != nil {
 		return
 	}
 
-	return servers.WaitForStatus(c.ComputeClient, s.ID, "ACTIVE", 60)
+	return servers.WaitForStatus(c.computeClient, s.ID, "ACTIVE", 60)
 }
 
+//DeleteTestInstance deletes the test instance via the nova api
 func (c *Client) DeleteTestInstance(n *model.IronicNode) (err error) {
-	if err = servers.ForceDelete(c.ComputeClient, n.InstanceUUID).ExtractErr(); err != nil {
+	if err = servers.ForceDelete(c.computeClient, n.InstanceUUID).ExtractErr(); err != nil {
 		return
 	}
-	return servers.WaitForStatus(c.ComputeClient, n.InstanceUUID, "DELETED", 60)
+	return servers.WaitForStatus(c.computeClient, n.InstanceUUID, "DELETED", 60)
 }
 
 func (c *Client) getImageID(name string) (id string, err error) {
-	err = images.ListDetail(c.ComputeClient, images.ListOpts{Name: name}).EachPage(
+	err = images.ListDetail(c.computeClient, images.ListOpts{Name: name}).EachPage(
 		func(p pagination.Page) (bool, error) {
 			is, err := images.ExtractImages(p)
 			if err != nil {
@@ -363,7 +375,7 @@ func (c *Client) getImageID(name string) (id string, err error) {
 }
 
 func (c *Client) getFlavorID(name string) (id string, err error) {
-	err = flavors.ListDetail(c.ComputeClient, nil).EachPage(func(p pagination.Page) (bool, error) {
+	err = flavors.ListDetail(c.computeClient, nil).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
 			return true, err
@@ -380,7 +392,7 @@ func (c *Client) getFlavorID(name string) (id string, err error) {
 }
 
 func (c *Client) getConductorZone(name string) (id string, err error) {
-	err = services.List(c.ComputeClient, services.ListOpts{Host: name}).EachPage(
+	err = services.List(c.computeClient, services.ListOpts{Host: name}).EachPage(
 		func(p pagination.Page) (bool, error) {
 			svs, err := services.ExtractServices(p)
 			if err != nil {
@@ -397,11 +409,13 @@ func (c *Client) getConductorZone(name string) (id string, err error) {
 	return
 }
 
+//ProvideNode sets node provisionstate to provided (available).
+//Needed to deploy a test instance on this node
 func (c *Client) ProvideNode(n *model.IronicNode) (err error) {
 	c.log.Info("providing node")
 	cf := func(tp nodes.TargetProvisionState) wait.ConditionFunc {
 		return wait.ConditionFunc(func() (bool, error) {
-			if err = nodes.ChangeProvisionState(c.IronicClient, n.UUID, nodes.ProvisionStateOpts{
+			if err = nodes.ChangeProvisionState(c.baremetalClient, n.UUID, nodes.ProvisionStateOpts{
 				Target: tp,
 			}).ExtractErr(); err != nil {
 				switch err.(type) {
@@ -422,7 +436,7 @@ func (c *Client) ProvideNode(n *model.IronicNode) (err error) {
 	}
 
 	cfp := wait.ConditionFunc(func() (bool, error) {
-		n, err := nodes.Get(c.IronicClient, n.UUID).Extract()
+		n, err := nodes.Get(c.baremetalClient, n.UUID).Extract()
 		if err != nil {
 			return true, err
 		}
@@ -436,6 +450,8 @@ func (c *Client) ProvideNode(n *model.IronicNode) (err error) {
 	return wait.Poll(5*time.Second, 30*time.Second, cfp)
 }
 
+//PrepareNode prepares the node for customers.
+//Removes resource_class, sets the rightful conductor and into maintenance
 func (c *Client) PrepareNode(n *model.IronicNode) (err error) {
 	conductor := strings.Split(n.Name, "-")[1]
 	opts := nodes.UpdateOpts{
@@ -457,9 +473,10 @@ func (c *Client) PrepareNode(n *model.IronicNode) (err error) {
 	return c.updateNode(opts, n)
 }
 
+//DeleteNode deletes a node via the baremetal api
 func (c *Client) DeleteNode(n *model.IronicNode) (err error) {
 	cfp := wait.ConditionFunc(func() (bool, error) {
-		err = nodes.Delete(c.IronicClient, n.UUID).ExtractErr()
+		err = nodes.Delete(c.baremetalClient, n.UUID).ExtractErr()
 		if err != nil {
 			return false, err
 		}
