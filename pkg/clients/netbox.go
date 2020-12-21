@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"context"
 	"fmt"
 
 	runtimeclient "github.com/go-openapi/runtime/client"
@@ -66,13 +67,17 @@ func (n *NetboxClient) updateNodeByName(name string, data models.WritableDeviceW
 	l, err := n.client.Dcim.DcimDevicesList(&dcim.DcimDevicesListParams{
 		Name: &name,
 	}, nil)
+	if err != nil {
+		return
+	}
 	if len(l.Payload.Results) > 1 || len(l.Payload.Results) == 0 {
 		return p, fmt.Errorf("could not find node with name %s", name)
 	}
 	node := l.Payload.Results[0]
 	p, err = n.client.Dcim.DcimDevicesUpdate(&dcim.DcimDevicesUpdateParams{
-		ID:   node.ID,
-		Data: &data,
+		ID:      node.ID,
+		Data:    &data,
+		Context: context.Background(),
 	}, nil)
 
 	return
