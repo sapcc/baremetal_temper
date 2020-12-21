@@ -2,7 +2,6 @@ package clients
 
 import (
 	"fmt"
-	"strconv"
 
 	runtimeclient "github.com/go-openapi/runtime/client"
 	netboxclient "github.com/netbox-community/go-netbox/netbox/client"
@@ -37,12 +36,7 @@ func NewNetboxClient(cfg config.Config, ctxLogger *log.Entry) (n *NetboxClient, 
 
 //SetNodeStatusActive does not return error to not trigger errorhandler and cleanup of node
 func (n *NetboxClient) SetNodeStatusActive(i *model.IronicNode) error {
-	id, err := strconv.ParseInt(i.UUID, 10, 64)
-	if err != nil {
-		log.Error(err)
-	}
-
-	p, err := n.updateNode(id, models.WritableDeviceWithConfigContext{
+	p, err := n.updateNodeByName(i.Name, models.WritableDeviceWithConfigContext{
 		Status: models.DeviceWithConfigContextStatusValueActive,
 	})
 	if err != nil {
@@ -56,11 +50,7 @@ func (n *NetboxClient) SetNodeStatusActive(i *model.IronicNode) error {
 
 //SetNodeStatusFailed sets status to failed in netbox
 func (n *NetboxClient) SetNodeStatusFailed(i *model.IronicNode) (err error) {
-	id, err := strconv.ParseInt(i.UUID, 10, 64)
-	if err != nil {
-		return
-	}
-	p, err := n.updateNode(id, models.WritableDeviceWithConfigContext{
+	p, err := n.updateNodeByName(i.Name, models.WritableDeviceWithConfigContext{
 		Status: models.DeviceWithConfigContextStatusValueFailed,
 	})
 	if err != nil {
@@ -72,9 +62,16 @@ func (n *NetboxClient) SetNodeStatusFailed(i *model.IronicNode) (err error) {
 	return
 }
 
-func (n *NetboxClient) updateNode(id int64, data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesUpdateOK, err error) {
+func (n *NetboxClient) updateNodeByName(name string, data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesUpdateOK, err error) {
+	l, err := n.client.Dcim.DcimDevicesList(&dcim.DcimDevicesListParams{
+		Name: &name,
+	}, nil)
+	if len(l.Payload.Results) > 1 || len(l.Payload.Results) == 0 {
+		return p, fmt.Errorf("could not find node with name %s", name)
+	}
+	node := l.Payload.Results[0]
 	p, err = n.client.Dcim.DcimDevicesUpdate(&dcim.DcimDevicesUpdateParams{
-		ID:   id,
+		ID:   node.ID,
 		Data: &data,
 	}, nil)
 
