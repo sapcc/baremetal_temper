@@ -84,7 +84,7 @@ loop:
 				p.clientOpenstack.PowerNodeOn,
 				p.clientOpenstack.ProvideNode,
 				p.clientOpenstack.WaitForNovaPropagation,
-				p.clientOpenstack.CreateTestInstance,
+				p.clientOpenstack.DeployTestInstance,
 				p.clientOpenstack.DeleteTestInstance,
 				p.clientOpenstack.PrepareNode,
 				p.clientNetbox.SetNodeStatusActive,

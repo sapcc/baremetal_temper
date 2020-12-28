@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"text/template"
@@ -106,12 +107,13 @@ func (c *Client) CheckIronicNodeCreated(n *model.IronicNode) error {
 	if n.UUID != "" {
 		return nil
 	}
-	_, err := nodes.Get(c.baremetalClient, n.UUID).Extract()
+	r, err := nodes.Get(c.baremetalClient, n.UUID).Extract()
 	if err != nil {
 		return &NodeNotFoundError{
 			Err: fmt.Sprintf("could not find node %s", n.UUID),
 		}
 	}
+	n.ResourceClass = r.ResourceClass
 	return nil
 }
 
@@ -322,9 +324,8 @@ func (c *Client) WaitForNovaPropagation(n *model.IronicNode) (err error) {
 }
 
 //CreateTestInstance creates a new test instance on the newly created node
-func (c *Client) CreateTestInstance(n *model.IronicNode) (err error) {
+func (c *Client) DeployTestInstance(n *model.IronicNode) (err error) {
 	c.log.Debug("creating test instance on node")
-	fID, err := c.getFlavorID(c.cfg.Deployment.Flavor)
 	iID, err := c.getImageID(c.cfg.Deployment.Image)
 	zID, err := c.getConductorZone(c.cfg.Deployment.ConductorZone)
 	if err != nil {
@@ -333,7 +334,7 @@ func (c *Client) CreateTestInstance(n *model.IronicNode) (err error) {
 
 	opts := servers.CreateOpts{
 		Name:             fmt.Sprintf("%s_inspector_test", time.Now().Format("2006-01-02T15:04:05")),
-		FlavorRef:        fID,
+		FlavorRef:        n.ResourceClass,
 		ImageRef:         iID,
 		AvailabilityZone: fmt.Sprintf("%s::%s", zID, n.UUID),
 	}
@@ -386,6 +387,39 @@ func (c *Client) getFlavorID(name string) (id string, err error) {
 				id = f.ID
 				return true, nil
 			}
+		}
+		return false, nil
+	})
+	return
+}
+
+func (c *Client) getMatchingFlavor(n *model.IronicNode) (name string, err error) {
+	err = flavors.ListDetail(c.computeClient, nil).EachPage(func(p pagination.Page) (bool, error) {
+		fs, err := flavors.ExtractFlavors(p)
+		if err != nil {
+			return true, err
+		}
+		ram := 100.0
+		disk := 500.0
+		cpu := 5.0
+		for _, f := range fs {
+			diff := math.Abs(float64(f.RAM - n.InspectionData.Inventory.Memory.PhysicalMb))
+			if diff > ram {
+				continue
+			}
+			ram = diff
+			diff = math.Abs(float64(f.Disk - int(n.InspectionData.RootDisk.Size)))
+			if diff > disk {
+				continue
+			}
+			disk = diff
+			diff = math.Abs(float64(f.VCPUs - n.InspectionData.Inventory.CPU.Count))
+			if diff > cpu {
+				continue
+			}
+			cpu = diff
+			name = f.Name
+			n.ResourceClass = f.Name
 		}
 		return false, nil
 	})
@@ -458,10 +492,6 @@ func (c *Client) PrepareNode(n *model.IronicNode) (err error) {
 	conductor := strings.Split(n.Name, "-")[1]
 	opts := nodes.UpdateOpts{
 		nodes.UpdateOperation{
-			Op:   nodes.RemoveOp,
-			Path: "/resource_class",
-		},
-		nodes.UpdateOperation{
 			Op:    nodes.ReplaceOp,
 			Path:  "/conductor_group",
 			Value: conductor,
@@ -491,7 +521,8 @@ func (c *Client) DeleteNode(n *model.IronicNode) (err error) {
 
 func (c *Client) getRules(n *model.IronicNode) (r config.Rule, err error) {
 	var funcMap = template.FuncMap{
-		"imageToID": c.getImageID,
+		"imageToID":         c.getImageID,
+		"getMatchingFlavor": c.getMatchingFlavor,
 	}
 
 	tmpl := template.New("rules.json").Funcs(funcMap)

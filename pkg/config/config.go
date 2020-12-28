@@ -44,7 +44,6 @@ type NetboxAuth struct {
 }
 
 type Deployment struct {
-	Flavor        string `yaml:"flavor"`
 	Image         string `yaml:"image"`
 	ConductorZone string `yaml:"conductor_zone"`
 }
