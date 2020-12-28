@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"strings"
 	"text/template"
@@ -399,25 +398,25 @@ func (c *Client) getMatchingFlavor(n *model.IronicNode) (name string, err error)
 		if err != nil {
 			return true, err
 		}
-		ram := 100.0
-		disk := 500.0
-		cpu := 5.0
+		ram := 0.1
+		disk := 0.2
+		cpu := 0.1
 		for _, f := range fs {
-			diff := math.Abs(float64(f.RAM - n.InspectionData.Inventory.Memory.PhysicalMb))
-			if diff > ram {
+			delta := calcDelta(f.RAM, n.InspectionData.Inventory.Memory.PhysicalMb)
+			if delta > ram {
 				continue
 			}
-			ram = diff
-			diff = math.Abs(float64(f.Disk - int(n.InspectionData.RootDisk.Size)))
-			if diff > disk {
+			ram = delta
+			delta = calcDelta(f.Disk, int(n.InspectionData.RootDisk.Size))
+			if delta > disk {
 				continue
 			}
-			disk = diff
-			diff = math.Abs(float64(f.VCPUs - n.InspectionData.Inventory.CPU.Count))
-			if diff > cpu {
+			disk = delta
+			delta = calcDelta(f.VCPUs, n.InspectionData.Inventory.CPU.Count)
+			if delta > cpu {
 				continue
 			}
-			cpu = diff
+			cpu = delta
 			name = f.Name
 			n.ResourceClass = f.Name
 		}
