@@ -8,15 +8,16 @@ import (
 )
 
 type Config struct {
-	IronicAuth      IronicAuth `yaml:"ironic_auth"`
-	Inspector       Inspector  `yaml:"inspector"`
-	Redfish         Redfish    `yaml:"redfish"`
-	NetboxAuth      NetboxAuth `yaml:"netbox_auth"`
-	NetboxNodesPath string     `yaml:"netbox_nodes_path"`
-	RulesPath       string     `yaml:"rules_path"`
-	OsRegion        string     `yaml:"os_region"`
-	Domain          string     `yaml:"domain"`
-	NameSpace       string     `yaml:"namespace"`
+	OpenstackAuth   OpenstackAuth `yaml:"os_auth"`
+	Inspector       Inspector     `yaml:"inspector"`
+	Redfish         Redfish       `yaml:"redfish"`
+	NetboxAuth      NetboxAuth    `yaml:"netbox_auth"`
+	NetboxNodesPath string        `yaml:"netbox_nodes_path"`
+	RulesPath       string        `yaml:"rules_path"`
+	OsRegion        string        `yaml:"os_region"`
+	Domain          string        `yaml:"domain"`
+	NameSpace       string        `yaml:"namespace"`
+	Deployment      Deployment    `yaml:"deployment"`
 }
 
 type Inspector struct {
@@ -28,7 +29,7 @@ type Redfish struct {
 	Password string `yaml:"password"`
 }
 
-type IronicAuth struct {
+type OpenstackAuth struct {
 	User              string `yaml:"user"`
 	Password          string `yaml:"password"`
 	AuthURL           string `yaml:"auth_url"`
@@ -40,6 +41,12 @@ type IronicAuth struct {
 type NetboxAuth struct {
 	Host  string `yaml:"host"`
 	Token string `yaml:"token"`
+}
+
+type Deployment struct {
+	Flavor        string `yaml:"flavor"`
+	Image         string `yaml:"image"`
+	ConductorZone string `yaml:"conductor_zone"`
 }
 
 func GetConfig(opts Options) (cfg Config, err error) {

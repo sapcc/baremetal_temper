@@ -50,7 +50,7 @@ func (n *NodeNotFoundError) Error() string {
 
 //NewClient creates a new client containing different openstack-clients (baremetal, compute, dns)
 func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
-	provider, err := newProviderClient(cfg.IronicAuth)
+	provider, err := newProviderClient(cfg.OpenstackAuth)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 	return &Client{baremetalClient: iclient, dnsClient: dnsClient, computeClient: cclient, domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
 }
 
-func newProviderClient(i config.IronicAuth) (pc *gophercloud.ProviderClient, err error) {
+func newProviderClient(i config.OpenstackAuth) (pc *gophercloud.ProviderClient, err error) {
 	os.Setenv("OS_USERNAME", i.User)
 	os.Setenv("OS_PASSWORD", i.Password)
 	os.Setenv("OS_PROJECT_NAME", i.ProjectName)
@@ -102,7 +102,7 @@ func newProviderClient(i config.IronicAuth) (pc *gophercloud.ProviderClient, err
 
 //CheckIronicNodeCreated checks if node was created
 func (c *Client) CheckIronicNodeCreated(n *model.IronicNode) error {
-	c.log.Info("checking node creation")
+	c.log.Debug("checking node creation")
 	if n.UUID != "" {
 		return nil
 	}
@@ -117,7 +117,7 @@ func (c *Client) CheckIronicNodeCreated(n *model.IronicNode) error {
 
 //ApplyRules applies rules from a json file
 func (c *Client) ApplyRules(n *model.IronicNode) (err error) {
-	c.log.Info("updating node")
+	c.log.Debug("applying rules on node")
 	rules, err := c.getRules(n)
 	if err != nil {
 		return
@@ -201,7 +201,7 @@ func (c *Client) getAPIVersion() (*apiversions.APIVersion, error) {
 
 //CreateDNSRecordFor creates a dns record for the given node if not exists
 func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
-	c.log.Info("creating dns record")
+	c.log.Debug("creating dns record")
 	opts := zones.ListOpts{
 		Name: c.domain + ".",
 	}
@@ -242,7 +242,7 @@ func (c *Client) CreateDNSRecordFor(n *model.IronicNode) (err error) {
 
 //PowerNodeOn powers on the node
 func (c *Client) PowerNodeOn(n *model.IronicNode) (err error) {
-	c.log.Info("powering on node")
+	c.log.Debug("powering on node")
 	powerStateOpts := nodes.PowerStateOpts{
 		Target: nodes.PowerOn,
 	}
@@ -273,7 +273,7 @@ func (c *Client) PowerNodeOn(n *model.IronicNode) (err error) {
 
 //ValidateNode calls the baremetal validate api
 func (c *Client) ValidateNode(n *model.IronicNode) (err error) {
-	c.log.Info("validating node")
+	c.log.Debug("validating node")
 	v, err := nodes.Validate(c.baremetalClient, n.UUID).Extract()
 	if err != nil {
 		return
@@ -298,7 +298,7 @@ func (c *Client) ValidateNode(n *model.IronicNode) (err error) {
 //WaitForNovaPropagation calls the hypervisor api to check if new node has been
 //propagated to nova
 func (c *Client) WaitForNovaPropagation(n *model.IronicNode) (err error) {
-	c.log.Info("waiting for nova propagation")
+	c.log.Debug("waiting for nova propagation")
 	cfp := wait.ConditionFunc(func() (bool, error) {
 		p, err := hypervisors.List(c.computeClient).AllPages()
 		if err != nil {
@@ -323,10 +323,10 @@ func (c *Client) WaitForNovaPropagation(n *model.IronicNode) (err error) {
 
 //CreateTestInstance creates a new test instance on the newly created node
 func (c *Client) CreateTestInstance(n *model.IronicNode) (err error) {
-	c.log.Info("creating node test deployment")
-	fID, err := c.getFlavorID("inspection_test")
-	iID, err := c.getImageID("ubuntu-20.04-amd64-baremetal")
-	zID, err := c.getConductorZone("nova-compute-ironic-testing")
+	c.log.Debug("creating test instance on node")
+	fID, err := c.getFlavorID(c.cfg.Deployment.Flavor)
+	iID, err := c.getImageID(c.cfg.Deployment.Image)
+	zID, err := c.getConductorZone(c.cfg.Deployment.ConductorZone)
 	if err != nil {
 		return
 	}
@@ -349,6 +349,7 @@ func (c *Client) CreateTestInstance(n *model.IronicNode) (err error) {
 
 //DeleteTestInstance deletes the test instance via the nova api
 func (c *Client) DeleteTestInstance(n *model.IronicNode) (err error) {
+	c.log.Debug("deleting instance on node")
 	if err = servers.ForceDelete(c.computeClient, n.InstanceUUID).ExtractErr(); err != nil {
 		return
 	}
@@ -412,7 +413,7 @@ func (c *Client) getConductorZone(name string) (id string, err error) {
 //ProvideNode sets node provisionstate to provided (available).
 //Needed to deploy a test instance on this node
 func (c *Client) ProvideNode(n *model.IronicNode) (err error) {
-	c.log.Info("providing node")
+	c.log.Debug("providing node")
 	cf := func(tp nodes.TargetProvisionState) wait.ConditionFunc {
 		return wait.ConditionFunc(func() (bool, error) {
 			if err = nodes.ChangeProvisionState(c.baremetalClient, n.UUID, nodes.ProvisionStateOpts{
@@ -451,8 +452,9 @@ func (c *Client) ProvideNode(n *model.IronicNode) (err error) {
 }
 
 //PrepareNode prepares the node for customers.
-//Removes resource_class, sets the rightful conductor and into maintenance
+//Removes resource_class, sets the rightful conductor and maintenance to true
 func (c *Client) PrepareNode(n *model.IronicNode) (err error) {
+	c.log.Debug("preparing node")
 	conductor := strings.Split(n.Name, "-")[1]
 	opts := nodes.UpdateOpts{
 		nodes.UpdateOperation{
@@ -475,6 +477,7 @@ func (c *Client) PrepareNode(n *model.IronicNode) (err error) {
 
 //DeleteNode deletes a node via the baremetal api
 func (c *Client) DeleteNode(n *model.IronicNode) (err error) {
+	c.log.Debug("deleting node")
 	cfp := wait.ConditionFunc(func() (bool, error) {
 		err = nodes.Delete(c.baremetalClient, n.UUID).ExtractErr()
 		if err != nil {
@@ -494,7 +497,7 @@ func (c *Client) getRules(n *model.IronicNode) (r config.Rule, err error) {
 	tmpl := template.New("rules.json").Funcs(funcMap)
 	t, err := tmpl.ParseFiles(c.cfg.RulesPath)
 	if err != nil {
-		return r, fmt.Errorf("Error parsing index: %s", err.Error())
+		return r, fmt.Errorf("Error parsing rules: %s", err.Error())
 	}
 
 	out := new(bytes.Buffer)
