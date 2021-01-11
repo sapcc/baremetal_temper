@@ -392,7 +392,7 @@ func (c *Client) getFlavorID(name string) (id string, err error) {
 	return
 }
 
-func (c *Client) getMatchingFlavor(n *model.IronicNode) (name string, err error) {
+func (c *Client) getMatchingFlavorFor(n *model.IronicNode) (name string, err error) {
 	err = flavors.ListDetail(c.computeClient, nil).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
@@ -520,8 +520,8 @@ func (c *Client) DeleteNode(n *model.IronicNode) (err error) {
 
 func (c *Client) getRules(n *model.IronicNode) (r config.Rule, err error) {
 	var funcMap = template.FuncMap{
-		"imageToID":         c.getImageID,
-		"getMatchingFlavor": c.getMatchingFlavor,
+		"imageToID":            c.getImageID,
+		"getMatchingFlavorFor": c.getMatchingFlavorFor,
 	}
 
 	tmpl := template.New("rules.json").Funcs(funcMap)

@@ -48,6 +48,11 @@ Example:
         "op": "add",
         "path": "/driver_info/deploy_kernel",
         "value": "{{ imageToID `some_image_name` }}"
+      },
+      {
+        "op": "replace",
+        "path": "/resource_class",
+        "value": "{{ getMatchingFlavorFor .node }}"
       }
     ],
     "port": [
