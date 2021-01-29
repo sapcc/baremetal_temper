@@ -7,6 +7,7 @@ require (
 	github.com/evalphobia/logrus_sentry v0.8.2
 	github.com/getsentry/raven-go v0.2.0 // indirect
 	github.com/go-openapi/runtime v0.19.21
+	github.com/go-ping/ping v0.0.0-20201115131931-3300c582a663
 	github.com/gophercloud/gophercloud v0.14.0
 	github.com/netbox-community/go-netbox v0.0.0-20200923200002-49832662a6fd
 	github.com/sirupsen/logrus v1.7.0

@@ -12,6 +12,7 @@ import (
 	"github.com/sapcc/ironic_temper/pkg/config"
 	"github.com/sapcc/ironic_temper/pkg/model"
 
+	"github.com/go-ping/ping"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/apiversions"
@@ -54,6 +55,7 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	iclient, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
 		Region: cfg.OsRegion,
 	})
@@ -90,6 +92,7 @@ func newProviderClient(i config.OpenstackAuth) (pc *gophercloud.ProviderClient, 
 		ProjectName: opts.TenantName,
 		DomainName:  os.Getenv("OS_PROJECT_DOMAIN_NAME"),
 	}
+
 	pc, err = openstack.AuthenticatedClient(opts)
 	if err != nil {
 		return pc, err
@@ -339,12 +342,25 @@ func (c *Client) DeployTestInstance(n *model.IronicNode) (err error) {
 	}
 	r := servers.Create(c.computeClient, opts)
 	s, err := r.Extract()
-	n.InstanceUUID = s.ID
 	if err != nil {
 		return
 	}
+	n.InstanceUUID = s.ID
 
-	return servers.WaitForStatus(c.computeClient, s.ID, "ACTIVE", 60)
+	if err = servers.WaitForStatus(c.computeClient, s.ID, "ACTIVE", 60); err != nil {
+		return
+	}
+	n.InstanceIPv4 = s.AccessIPv4
+	pinger, err := ping.NewPinger(n.InstanceIPv4)
+	if err != nil {
+		return
+	}
+	pinger.Count = 3
+	err = pinger.Run() // Blocks until finished.
+	if err != nil {
+		return
+	}
+	return
 }
 
 //DeleteTestInstance deletes the test instance via the nova api

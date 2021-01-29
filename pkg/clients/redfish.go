@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/sapcc/ironic_temper/pkg/config"
+	"github.com/sapcc/ironic_temper/pkg/diagnostics"
 	"github.com/sapcc/ironic_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 	"github.com/stmcginnis/gofish"
@@ -183,4 +184,17 @@ func (r RedfishClient) setNetworkDevicesData(s *redfish.ComputerSystem) (err err
 	}
 
 	return
+}
+
+func (r RedfishClient) RunRemoteDiagnostics(n *model.IronicNode) (err error) {
+	d, err := diagnostics.GetRemoteDiagnostics(r.client, r.log)
+	if err != nil {
+		return
+	}
+
+	if d == nil {
+		return
+	}
+
+	return d.Run()
 }

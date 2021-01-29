@@ -5,6 +5,7 @@ type IronicNode struct {
 	IP             string
 	UUID           string `json:"uuid"`
 	InstanceUUID   string
+	InstanceIPv4   string
 	Host           string
 	ResourceClass  string
 	InspectionData InspectonData
