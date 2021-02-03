@@ -30,14 +30,14 @@ func NewRedfishClient(cfg config.Config, host string, ctxLogger *log.Entry) *Red
 			Username:  cfg.Redfish.User,
 			Password:  cfg.Redfish.Password,
 			Insecure:  true,
-			BasicAuth: true,
+			BasicAuth: false,
 		},
 		log: ctxLogger,
 	}
 }
 
-//LoadInventoryForNode loads the node's inventory via it's redfish api
-func (r RedfishClient) LoadInventoryForNode(n *model.IronicNode) (err error) {
+//LoadNodeInventory loads the node's inventory via it's redfish api
+func (r RedfishClient) LoadInventory(n *model.IronicNode) (err error) {
 	r.log.Debug("calling redfish api to load node info")
 	client, err := gofish.Connect(r.gCfg)
 	if err != nil {
@@ -187,7 +187,13 @@ func (r RedfishClient) setNetworkDevicesData(s *redfish.ComputerSystem) (err err
 }
 
 func (r RedfishClient) RunRemoteDiagnostics(n *model.IronicNode) (err error) {
-	d, err := diagnostics.GetRemoteDiagnostics(r.client, r.log)
+	r.log.Debug("calling redfish api to run remote diagnostics")
+	client, err := gofish.Connect(r.gCfg)
+	if err != nil {
+		return
+	}
+	defer client.Logout()
+	d, err := diagnostics.GetRemoteDiagnostics(client, r.log)
 	if err != nil {
 		return
 	}

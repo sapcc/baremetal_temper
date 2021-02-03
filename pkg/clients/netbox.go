@@ -35,8 +35,8 @@ func NewNetboxClient(cfg config.Config, ctxLogger *log.Entry) (n *NetboxClient, 
 	return
 }
 
-//SetNodeStatusActive does not return error to not trigger errorhandler and cleanup of node
-func (n *NetboxClient) SetNodeStatusActive(i *model.IronicNode) error {
+//Activate does not return error to not trigger errorhandler and cleanup of node
+func (n *NetboxClient) Activate(i *model.IronicNode) error {
 	p, err := n.updateNodeByName(i.Name, models.WritableDeviceWithConfigContext{
 		Status: models.DeviceWithConfigContextStatusValueActive,
 	})
@@ -65,7 +65,8 @@ func (n *NetboxClient) SetNodeStatusFailed(i *model.IronicNode) (err error) {
 
 func (n *NetboxClient) updateNodeByName(name string, data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesUpdateOK, err error) {
 	l, err := n.client.Dcim.DcimDevicesList(&dcim.DcimDevicesListParams{
-		Name: &name,
+		Name:    &name,
+		Context: context.Background(),
 	}, nil)
 	if err != nil {
 		return
@@ -80,5 +81,39 @@ func (n *NetboxClient) updateNodeByName(name string, data models.WritableDeviceW
 		Context: context.Background(),
 	}, nil)
 
+	return
+}
+
+func (n *NetboxClient) LoadInterfaces(i *model.IronicNode) (err error) {
+	l, err := n.client.Dcim.DcimInterfacesList(&dcim.DcimInterfacesListParams{
+		Device:  &i.Name,
+		Context: context.Background(),
+	}, nil)
+	if err != nil {
+		return
+	}
+	if len(l.Payload.Results) == 0 {
+		return fmt.Errorf("could not find interfaces for node with name %s", i.Name)
+	}
+
+	r := make(map[string]string)
+
+	for _, i := range l.Payload.Results {
+		if i.MacAddress == nil {
+			continue
+		}
+
+		conn, ok := i.ConnectedEndpoint.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("no device connection info")
+		}
+		device, ok := conn["device"].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("no device connection info")
+		}
+		dn := fmt.Sprintf("%v", device["name"])
+		r[*i.MacAddress] = dn
+	}
+	i.Connections = r
 	return
 }

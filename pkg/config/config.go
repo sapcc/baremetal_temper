@@ -12,9 +12,10 @@ type Config struct {
 	Inspector       Inspector     `yaml:"inspector"`
 	Redfish         Redfish       `yaml:"redfish"`
 	NetboxAuth      NetboxAuth    `yaml:"netbox_auth"`
+	AristaAuth      AristaAuth    `yaml:"arista_auth"`
 	NetboxNodesPath string        `yaml:"netbox_nodes_path"`
 	RulesPath       string        `yaml:"rules_path"`
-	OsRegion        string        `yaml:"os_region"`
+	Region          string        `yaml:"region"`
 	Domain          string        `yaml:"domain"`
 	NameSpace       string        `yaml:"namespace"`
 	Deployment      Deployment    `yaml:"deployment"`
@@ -41,6 +42,13 @@ type OpenstackAuth struct {
 type NetboxAuth struct {
 	Host  string `yaml:"host"`
 	Token string `yaml:"token"`
+}
+
+type AristaAuth struct {
+	Transport string `yaml:"transport"`
+	Password  string `yaml:"password"`
+	User      string `yaml:"user"`
+	Port      int    `yaml:"port"`
 }
 
 type Deployment struct {

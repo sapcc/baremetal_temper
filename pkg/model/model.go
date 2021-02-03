@@ -9,6 +9,7 @@ type IronicNode struct {
 	Host           string
 	ResourceClass  string
 	InspectionData InspectonData
+	Connections    map[string]string
 }
 
 type InspectonData struct {

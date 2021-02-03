@@ -71,24 +71,27 @@ loop:
 				log.Infof("node %s is already being tempered", node.Name)
 				continue
 			}
+
 			r.nodesInProgress[node.Name] = struct{}{}
 			r.Unlock()
 
 			go r.run([]func(n *model.IronicNode) error{
-				p.clientOpenstack.CreateDNSRecordFor,
-				p.clientRedfish.LoadInventoryForNode,
+				p.clientRedfish.LoadInventory,
+				p.clientNetbox.LoadInterfaces,
 				p.clientRedfish.RunRemoteDiagnostics,
-				p.clientInspector.CreateIronicNode,
-				p.clientOpenstack.CheckIronicNodeCreated,
+				p.clientOpenstack.CreateDNSRecord,
+				p.clientInspector.Create,
+				p.clientOpenstack.CheckCreated,
 				p.clientOpenstack.ApplyRules,
-				p.clientOpenstack.ValidateNode,
-				p.clientOpenstack.PowerNodeOn,
-				p.clientOpenstack.ProvideNode,
+				p.clientOpenstack.Validate,
+				p.clientOpenstack.PowerOn,
+				p.clientOpenstack.Provide,
 				p.clientOpenstack.WaitForNovaPropagation,
 				p.clientOpenstack.DeployTestInstance,
+				p.clientArista.RunCableCheck,
 				p.clientOpenstack.DeleteTestInstance,
-				p.clientOpenstack.PrepareNode,
-				p.clientNetbox.SetNodeStatusActive,
+				p.clientOpenstack.Prepare,
+				p.clientNetbox.Activate,
 			}, p)
 		}
 		select {

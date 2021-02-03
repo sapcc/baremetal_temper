@@ -37,11 +37,5 @@ func GetRules(path string) (jsonBytes []byte, err error) {
 	if err != nil {
 		return jsonBytes, fmt.Errorf("read file file: %s", err.Error())
 	}
-	/*
-		err = yaml.Unmarshal(yamlBytes, &r)
-		if err != nil {
-			return r, fmt.Errorf("parse config file: %s", err.Error())
-		}
-	*/
 	return
 }
