@@ -25,6 +25,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/recordsets"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
+	iDservices "github.com/gophercloud/gophercloud/openstack/identity/v3/services"
 	"github.com/gophercloud/gophercloud/pagination"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -35,6 +36,7 @@ type Client struct {
 	baremetalClient *gophercloud.ServiceClient
 	dnsClient       *gophercloud.ServiceClient
 	computeClient   *gophercloud.ServiceClient
+	keystoneClient  *gophercloud.ServiceClient
 	domain          string
 	log             *log.Entry
 	cfg             config.Config
@@ -56,27 +58,31 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 		return nil, err
 	}
 
-	iclient, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
+	bc, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
 		Region: cfg.Region,
 	})
 
-	dnsClient, err := openstack.NewDNSV2(provider, gophercloud.EndpointOpts{
+	dc, err := openstack.NewDNSV2(provider, gophercloud.EndpointOpts{
 		Region: cfg.Region,
 	})
 
-	cclient, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
+	cc, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
+		Region: cfg.Region,
+	})
+
+	ic, err := openstack.NewIdentityV3(provider, gophercloud.EndpointOpts{
 		Region: cfg.Region,
 	})
 
 	if err != nil {
 		return nil, err
 	}
-	version, err := apiversions.Get(iclient, "v1").Extract()
+	version, err := apiversions.Get(bc, "v1").Extract()
 	if err != nil {
 		return nil, err
 	}
-	iclient.Microversion = version.Version
-	return &Client{baremetalClient: iclient, dnsClient: dnsClient, computeClient: cclient, domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
+	bc.Microversion = version.Version
+	return &Client{baremetalClient: bc, dnsClient: dc, computeClient: cc, keystoneClient: ic, domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
 }
 
 func newProviderClient(i config.OpenstackAuth) (pc *gophercloud.ProviderClient, err error) {
@@ -101,6 +107,22 @@ func newProviderClient(i config.OpenstackAuth) (pc *gophercloud.ProviderClient, 
 	pc.UseTokenLock()
 
 	return pc, nil
+}
+
+func (c *Client) ServiceEnabled(service string) (bool, error) {
+	a, err := iDservices.List(c.keystoneClient, iDservices.ListOpts{Name: service}).AllPages()
+	if err != nil {
+		return false, err
+	}
+	s, err := iDservices.ExtractServices(a)
+	if len(s) == 0 {
+		return false, fmt.Errorf("service not found")
+	}
+	if s[0].Enabled {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 //CheckCreated checks if node was created

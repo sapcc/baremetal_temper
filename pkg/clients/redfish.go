@@ -36,7 +36,7 @@ func NewRedfishClient(cfg config.Config, host string, ctxLogger *log.Entry) *Red
 	}
 }
 
-//LoadNodeInventory loads the node's inventory via it's redfish api
+//LoadInventory loads the node's inventory via it's redfish api
 func (r RedfishClient) LoadInventory(n *model.IronicNode) (err error) {
 	r.log.Debug("calling redfish api to load node info")
 	client, err := gofish.Connect(r.gCfg)

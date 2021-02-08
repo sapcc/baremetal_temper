@@ -16,8 +16,7 @@ type InspectonData struct {
 	RootDisk      RootDisk  `json:"root_disk"`
 	BootInterface string    `json:"boot_interface"`
 	Inventory     Inventory `json:"inventory"`
-
-	Logs string `json:"logs"`
+	Logs          string    `json:"logs"`
 }
 
 type RootDisk struct {

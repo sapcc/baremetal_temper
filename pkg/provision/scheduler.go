@@ -74,25 +74,35 @@ loop:
 
 			r.nodesInProgress[node.Name] = struct{}{}
 			r.Unlock()
-
-			go r.run([]func(n *model.IronicNode) error{
+			tasks := make([]func(n *model.IronicNode) error, 0)
+			// default tasks
+			tasks = append(tasks,
 				p.clientRedfish.LoadInventory,
 				p.clientNetbox.LoadInterfaces,
 				p.clientRedfish.RunRemoteDiagnostics,
-				p.clientOpenstack.CreateDNSRecord,
-				p.clientInspector.Create,
-				p.clientOpenstack.CheckCreated,
-				p.clientOpenstack.ApplyRules,
-				p.clientOpenstack.Validate,
-				p.clientOpenstack.PowerOn,
-				p.clientOpenstack.Provide,
-				p.clientOpenstack.WaitForNovaPropagation,
-				p.clientOpenstack.DeployTestInstance,
-				p.clientArista.RunCableCheck,
-				p.clientOpenstack.DeleteTestInstance,
-				p.clientOpenstack.Prepare,
-				p.clientNetbox.Activate,
-			}, p)
+			)
+			if ok, err := p.clientOpenstack.ServiceEnabled("baremetal"); err == nil || ok {
+				// add baremetal tasks
+				tasks = append(tasks,
+					p.clientInspector.Create,
+					p.clientOpenstack.CheckCreated,
+					p.clientOpenstack.CreateDNSRecord,
+					p.clientOpenstack.ApplyRules,
+					p.clientOpenstack.Validate,
+					p.clientOpenstack.PowerOn,
+					p.clientOpenstack.Provide,
+					p.clientOpenstack.WaitForNovaPropagation,
+					p.clientOpenstack.DeployTestInstance,
+					p.clientArista.RunCableCheck,
+					p.clientOpenstack.DeleteTestInstance,
+					p.clientOpenstack.Prepare,
+					p.clientNetbox.Activate,
+				)
+			} else {
+				tasks = append(tasks, p.clientArista.RunCableCheck)
+			}
+
+			go r.run(tasks, p)
 		}
 		select {
 		case <-ticker.C:
