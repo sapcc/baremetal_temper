@@ -14,7 +14,6 @@ type Provisioner struct {
 	clientRedfish   *clients.RedfishClient
 	clientInspector *clients.InspectorClient
 	clientNetbox    *clients.NetboxClient
-	clientArista    *clients.AristaClient
 }
 
 func NewProvisioner(node model.IronicNode, cfg config.Config) (*Provisioner, error) {
@@ -28,9 +27,8 @@ func NewProvisioner(node model.IronicNode, cfg config.Config) (*Provisioner, err
 	clientRedfish := clients.NewRedfishClient(cfg, node.IP, ctxLogger)
 	clientInspector := clients.NewInspectorClient(cfg, ctxLogger)
 	clientNetbox, err := clients.NewNetboxClient(cfg, ctxLogger)
-	clientArista, err := clients.NewAristaClient(cfg, ctxLogger)
 	if err != nil {
 		return nil, err
 	}
-	return &Provisioner{node, openstackClient, clientRedfish, clientInspector, clientNetbox, clientArista}, nil
+	return &Provisioner{node, openstackClient, clientRedfish, clientInspector, clientNetbox}, nil
 }

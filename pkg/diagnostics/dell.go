@@ -8,13 +8,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sapcc/ironic_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 	"github.com/stmcginnis/gofish"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-type Dell struct {
+type DellClient struct {
 	client *gofish.APIClient
+	gCfg   gofish.ClientConfig
 	log    *log.Entry
 }
 
@@ -31,13 +33,15 @@ type iDRACJob struct {
 	ID             string `json:"Id"`
 }
 
-func NewDell(c *gofish.APIClient, l *log.Entry) Diagnostics {
-	return &Dell{c, l}
-}
-
-func (d Dell) Run() (err error) {
+func (d DellClient) Run(n *model.IronicNode) (err error) {
+	client, err := gofish.Connect(d.gCfg)
+	defer client.Logout()
+	if err != nil {
+		return
+	}
+	d.client = client
 	payload := iDracDiagnostics{RebootJobType: "GracefulRebootWithForcedShutdown", RunMode: "Express"} //Extended
-	resp, err := d.client.Post("/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.RunePSADiagnostics", payload)
+	resp, err := client.Post("/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.RunePSADiagnostics", payload)
 	if err != nil {
 		return err
 	}
@@ -80,7 +84,7 @@ func (d Dell) Run() (err error) {
 	return
 }
 
-func (d Dell) getJobByID(id string) (j iDRACJob, err error) {
+func (d DellClient) getJobByID(id string) (j iDRACJob, err error) {
 	resp, err := d.client.Get("/redfish/v1/Managers/iDRAC.Embedded.1/Jobs/" + id)
 	if err != nil {
 		return
@@ -94,7 +98,7 @@ func (d Dell) getJobByID(id string) (j iDRACJob, err error) {
 	return
 }
 
-func (d Dell) getDiagnosticsResult() (results map[string]int, err error) {
+func (d DellClient) getDiagnosticsResult() (results map[string]int, err error) {
 	var rgx = regexp.MustCompile(`\*\*(.*?)\*\*`)
 	var test string
 	results = make(map[string]int)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/sapcc/ironic_temper/pkg/clients"
 	"github.com/sapcc/ironic_temper/pkg/config"
+	"github.com/sapcc/ironic_temper/pkg/diagnostics"
 	"github.com/sapcc/ironic_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 )
@@ -74,13 +75,22 @@ loop:
 
 			r.nodesInProgress[node.Name] = struct{}{}
 			r.Unlock()
+
 			tasks := make([]func(n *model.IronicNode) error, 0)
 			// default tasks
 			tasks = append(tasks,
 				p.clientRedfish.LoadInventory,
 				p.clientNetbox.LoadInterfaces,
-				p.clientRedfish.RunRemoteDiagnostics,
 			)
+			ctxLogger := log.WithFields(log.Fields{
+				"node": node.Name,
+			})
+			d, err := diagnostics.GetRemoteDiagnostics(p.clientRedfish.ClientConfig, r.cfg, ctxLogger)
+			if err != nil {
+				r.erroHandler.Errors <- err
+				continue
+			}
+
 			if ok, err := p.clientOpenstack.ServiceEnabled("baremetal"); err == nil || ok {
 				// add baremetal tasks
 				tasks = append(tasks,
@@ -93,13 +103,15 @@ loop:
 					p.clientOpenstack.Provide,
 					p.clientOpenstack.WaitForNovaPropagation,
 					p.clientOpenstack.DeployTestInstance,
-					p.clientArista.RunCableCheck,
+				)
+				tasks = append(tasks, d...)
+				tasks = append(tasks,
 					p.clientOpenstack.DeleteTestInstance,
 					p.clientOpenstack.Prepare,
 					p.clientNetbox.Activate,
 				)
 			} else {
-				tasks = append(tasks, p.clientArista.RunCableCheck)
+				tasks = append(tasks, d...)
 			}
 
 			go r.run(tasks, p)

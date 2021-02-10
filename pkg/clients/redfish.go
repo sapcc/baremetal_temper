@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/sapcc/ironic_temper/pkg/config"
-	"github.com/sapcc/ironic_temper/pkg/diagnostics"
 	"github.com/sapcc/ironic_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 	"github.com/stmcginnis/gofish"
@@ -14,18 +13,18 @@ import (
 )
 
 type RedfishClient struct {
-	gCfg    gofish.ClientConfig
-	client  *gofish.APIClient
-	service *gofish.Service
-	data    *model.InspectonData
-	node    *model.IronicNode
-	log     *log.Entry
+	ClientConfig gofish.ClientConfig
+	client       *gofish.APIClient
+	service      *gofish.Service
+	data         *model.InspectonData
+	node         *model.IronicNode
+	log          *log.Entry
 }
 
 //NewRedfishClient creates redfish client
 func NewRedfishClient(cfg config.Config, host string, ctxLogger *log.Entry) *RedfishClient {
 	return &RedfishClient{
-		gCfg: gofish.ClientConfig{
+		ClientConfig: gofish.ClientConfig{
 			Endpoint:  fmt.Sprintf("https://%s", host),
 			Username:  cfg.Redfish.User,
 			Password:  cfg.Redfish.Password,
@@ -39,7 +38,7 @@ func NewRedfishClient(cfg config.Config, host string, ctxLogger *log.Entry) *Red
 //LoadInventory loads the node's inventory via it's redfish api
 func (r RedfishClient) LoadInventory(n *model.IronicNode) (err error) {
 	r.log.Debug("calling redfish api to load node info")
-	client, err := gofish.Connect(r.gCfg)
+	client, err := gofish.Connect(r.ClientConfig)
 	if err != nil {
 		return
 	}
@@ -184,23 +183,4 @@ func (r RedfishClient) setNetworkDevicesData(s *redfish.ComputerSystem) (err err
 	}
 
 	return
-}
-
-func (r RedfishClient) RunRemoteDiagnostics(n *model.IronicNode) (err error) {
-	r.log.Debug("calling redfish api to run remote diagnostics")
-	client, err := gofish.Connect(r.gCfg)
-	if err != nil {
-		return
-	}
-	defer client.Logout()
-	d, err := diagnostics.GetRemoteDiagnostics(client, r.log)
-	if err != nil {
-		return
-	}
-
-	if d == nil {
-		return
-	}
-
-	return d.Run()
 }

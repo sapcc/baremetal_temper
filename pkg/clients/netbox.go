@@ -3,6 +3,7 @@ package clients
 import (
 	"context"
 	"fmt"
+	"net"
 
 	runtimeclient "github.com/go-openapi/runtime/client"
 	netboxclient "github.com/netbox-community/go-netbox/netbox/client"
@@ -85,6 +86,7 @@ func (n *NetboxClient) updateNodeByName(name string, data models.WritableDeviceW
 }
 
 func (n *NetboxClient) LoadInterfaces(i *model.IronicNode) (err error) {
+	n.log.Debug("calling netbox api to load node interface")
 	l, err := n.client.Dcim.DcimInterfacesList(&dcim.DcimInterfacesListParams{
 		Device:  &i.Name,
 		Context: context.Background(),
@@ -96,7 +98,7 @@ func (n *NetboxClient) LoadInterfaces(i *model.IronicNode) (err error) {
 		return fmt.Errorf("could not find interfaces for node with name %s", i.Name)
 	}
 
-	r := make(map[string]string)
+	intfs := make([]model.IronicInterface, 0)
 
 	for _, i := range l.Payload.Results {
 		if i.MacAddress == nil {
@@ -111,9 +113,35 @@ func (n *NetboxClient) LoadInterfaces(i *model.IronicNode) (err error) {
 		if !ok {
 			return fmt.Errorf("no device connection info")
 		}
-		dn := fmt.Sprintf("%v", device["name"])
-		r[*i.MacAddress] = dn
+
+		ip, err := n.getInterfaceIP(fmt.Sprintf("%v", device["id"]))
+		if err != nil {
+			return err
+		}
+		fmt.Println(ip.String())
+
+		intf := model.IronicInterface{
+			Connection:   fmt.Sprintf("%v", device["name"]),
+			ConnectionIP: ip.String(),
+			Mac:          *i.MacAddress,
+		}
+		intfs = append(intfs, intf)
 	}
-	i.Connections = r
+	i.Interfaces = append(i.Interfaces, intfs...)
+	return
+}
+
+func (n *NetboxClient) getInterfaceIP(id string) (ip net.IP, err error) {
+	l, err := n.client.Dcim.DcimDevicesList(&dcim.DcimDevicesListParams{
+		ID:      &id,
+		Context: context.Background(),
+	}, nil)
+	if err != nil {
+		return
+	}
+	if len(l.Payload.Results) == 0 {
+		return ip, fmt.Errorf("no device found")
+	}
+	ip, _, err = net.ParseCIDR(*l.Payload.Results[0].PrimaryIp4.Address)
 	return
 }

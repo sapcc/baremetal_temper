@@ -5,6 +5,7 @@ go 1.14
 require (
 	github.com/aristanetworks/goeapi v0.5.0
 	github.com/certifi/gocertifi v0.0.0-20200922220541-2c3bb06c6054 // indirect
+	github.com/ciscoecosystem/aci-go-client v1.6.6
 	github.com/evalphobia/logrus_sentry v0.8.2
 	github.com/getsentry/raven-go v0.2.0 // indirect
 	github.com/go-openapi/runtime v0.19.21

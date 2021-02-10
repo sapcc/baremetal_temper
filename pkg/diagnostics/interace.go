@@ -1,5 +1,7 @@
 package diagnostics
 
+import "github.com/sapcc/ironic_temper/pkg/model"
+
 type Diagnostics interface {
-	Run() error
+	Run(n *model.IronicNode) error
 }

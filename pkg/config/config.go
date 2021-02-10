@@ -13,6 +13,7 @@ type Config struct {
 	Redfish         Redfish       `yaml:"redfish"`
 	NetboxAuth      NetboxAuth    `yaml:"netbox_auth"`
 	AristaAuth      AristaAuth    `yaml:"arista_auth"`
+	AciAuth         AciAuth       `yaml:"aci_auth"`
 	NetboxNodesPath string        `yaml:"netbox_nodes_path"`
 	RulesPath       string        `yaml:"rules_path"`
 	Region          string        `yaml:"region"`
@@ -49,6 +50,11 @@ type AristaAuth struct {
 	Password  string `yaml:"password"`
 	User      string `yaml:"user"`
 	Port      int    `yaml:"port"`
+}
+
+type AciAuth struct {
+	Password string `yaml:"password"`
+	User     string `yaml:"user"`
 }
 
 type Deployment struct {
