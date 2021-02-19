@@ -14,6 +14,7 @@ type Config struct {
 	NetboxAuth      NetboxAuth    `yaml:"netbox_auth"`
 	AristaAuth      AristaAuth    `yaml:"arista_auth"`
 	AciAuth         AciAuth       `yaml:"aci_auth"`
+	AwxAuth         AwxAuth       `yaml:"awx_auth"`
 	NetboxNodesPath string        `yaml:"netbox_nodes_path"`
 	RulesPath       string        `yaml:"rules_path"`
 	Region          string        `yaml:"region"`
@@ -55,6 +56,12 @@ type AristaAuth struct {
 type AciAuth struct {
 	Password string `yaml:"password"`
 	User     string `yaml:"user"`
+}
+
+type AwxAuth struct {
+	Password string `yaml:"password"`
+	User     string `yaml:"user"`
+	Host     string `yaml:"host"`
 }
 
 type Deployment struct {

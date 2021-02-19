@@ -9,7 +9,7 @@ import (
 	"github.com/stmcginnis/gofish"
 )
 
-func GetRemoteDiagnostics(gc gofish.ClientConfig, cfg config.Config, l *log.Entry) (d []func(n *model.IronicNode) error, err error) {
+func GetDiagnosticTasks(gc gofish.ClientConfig, cfg config.Config, l *log.Entry) (d []func(n *model.IronicNode) error, err error) {
 	d = make([]func(n *model.IronicNode) error, 0)
 	c, err := gofish.Connect(gc)
 	defer c.Logout()

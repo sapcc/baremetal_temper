@@ -76,45 +76,12 @@ loop:
 			r.nodesInProgress[node.Name] = struct{}{}
 			r.Unlock()
 
-			tasks := make([]func(n *model.IronicNode) error, 0)
-			// default tasks
-			tasks = append(tasks,
-				p.clientRedfish.LoadInventory,
-				p.clientNetbox.LoadInterfaces,
-			)
-			ctxLogger := log.WithFields(log.Fields{
-				"node": node.Name,
-			})
-			d, err := diagnostics.GetRemoteDiagnostics(p.clientRedfish.ClientConfig, r.cfg, ctxLogger)
+			t, err := r.getTasks(p, node)
 			if err != nil {
 				r.erroHandler.Errors <- err
 				continue
 			}
-
-			if ok, err := p.clientOpenstack.ServiceEnabled("baremetal"); err == nil || ok {
-				// add baremetal tasks
-				tasks = append(tasks,
-					p.clientInspector.Create,
-					p.clientOpenstack.CheckCreated,
-					p.clientOpenstack.CreateDNSRecord,
-					p.clientOpenstack.ApplyRules,
-					p.clientOpenstack.Validate,
-					p.clientOpenstack.PowerOn,
-					p.clientOpenstack.Provide,
-					p.clientOpenstack.WaitForNovaPropagation,
-					p.clientOpenstack.DeployTestInstance,
-				)
-				tasks = append(tasks, d...)
-				tasks = append(tasks,
-					p.clientOpenstack.DeleteTestInstance,
-					p.clientOpenstack.Prepare,
-					p.clientNetbox.Activate,
-				)
-			} else {
-				tasks = append(tasks, d...)
-			}
-
-			go r.run(tasks, p)
+			go r.run(t, p)
 		}
 		select {
 		case <-ticker.C:
@@ -177,5 +144,45 @@ func (r *Scheduler) getProvisioner(node model.IronicNode) (p *Provisioner, err e
 	if err == nil {
 		r.provisoners[node.Name] = p
 	}
+	return
+}
+
+func (r *Scheduler) getTasks(p *Provisioner, n model.IronicNode) (tasks []func(n *model.IronicNode) error, err error) {
+	tasks = make([]func(n *model.IronicNode) error, 0)
+	tasks = append(tasks,
+		p.clientRedfish.LoadInventory,
+		p.clientNetbox.LoadInterfaces,
+	)
+	ctxLogger := log.WithFields(log.Fields{
+		"node": n.Name,
+	})
+	d, err := diagnostics.GetDiagnosticTasks(p.clientRedfish.ClientConfig, r.cfg, ctxLogger)
+	if err != nil {
+		return
+	}
+
+	if ok, err := p.clientOpenstack.ServiceEnabled("baremetal"); err == nil || ok {
+		// add baremetal tasks
+		tasks = append(tasks,
+			p.clientInspector.Create,
+			p.clientOpenstack.CheckCreated,
+			p.clientOpenstack.CreateDNSRecord,
+			p.clientOpenstack.ApplyRules,
+			p.clientOpenstack.Validate,
+			p.clientOpenstack.PowerOn,
+			p.clientOpenstack.Provide,
+			p.clientOpenstack.WaitForNovaPropagation,
+			p.clientOpenstack.DeployTestInstance,
+		)
+		tasks = append(tasks, d...)
+		tasks = append(tasks,
+			p.clientOpenstack.DeleteTestInstance,
+			p.clientOpenstack.Prepare,
+			p.clientNetbox.Activate,
+		)
+	} else {
+		tasks = append(tasks, d...)
+	}
+
 	return
 }
