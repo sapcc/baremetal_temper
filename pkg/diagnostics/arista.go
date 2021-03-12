@@ -16,11 +16,14 @@ type AristaClient struct {
 	log *log.Entry
 }
 
-func (a AristaClient) Run(n *model.IronicNode) (err error) {
-	a.log.Debug("calling arista api for node cable check")
+func (a AristaClient) Run(n *model.Node) (err error) {
 	foundAllNeighbors := true
 	cfg := a.cfg.AristaAuth
 	for _, i := range n.Interfaces {
+		if !strings.Contains(i.Connection, "asw") {
+			continue
+		}
+		a.log.Debug("calling arista api for node cable check")
 		host := fmt.Sprintf("%s.%s", i.Connection, a.cfg.Domain)
 		c, err := goeapi.Connect(cfg.Transport, host, cfg.User, cfg.Password, cfg.Port)
 		if err != nil {

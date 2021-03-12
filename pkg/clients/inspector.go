@@ -49,7 +49,10 @@ func NewInspectorClient(cfg config.Config, ctxLogger *log.Entry) *InspectorClien
 }
 
 //Create creates a new ironic node based on the provided ironic model
-func (i InspectorClient) Create(in *model.IronicNode) (err error) {
+func (i InspectorClient) Create(in *model.Node) (err error) {
+	if !in.Baremetal {
+		return
+	}
 	i.log.Debug("calling inspector api for node creation")
 	client := &http.Client{}
 	u, err := url.Parse(fmt.Sprintf("http://%s", i.host))

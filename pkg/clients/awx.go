@@ -24,7 +24,7 @@ type launchBody struct {
 	Limit     string `json:"limit"`
 }
 
-func (a AwxClient) ExecTemplates(n *model.IronicNode) (err error) {
+func (a AwxClient) ExecTemplates(n *model.Node) (err error) {
 	lb := launchBody{
 		Inventory: 94,
 		Limit:     n.Host,

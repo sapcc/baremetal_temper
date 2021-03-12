@@ -13,19 +13,19 @@ import (
 )
 
 type RedfishClient struct {
-	ClientConfig gofish.ClientConfig
+	ClientConfig *gofish.ClientConfig
 	client       *gofish.APIClient
 	service      *gofish.Service
 	data         *model.InspectonData
-	node         *model.IronicNode
+	node         *model.Node
 	log          *log.Entry
 }
 
 //NewRedfishClient creates redfish client
-func NewRedfishClient(cfg config.Config, host string, ctxLogger *log.Entry) *RedfishClient {
+func NewRedfishClient(cfg config.Config, ctxLogger *log.Entry) *RedfishClient {
 	return &RedfishClient{
-		ClientConfig: gofish.ClientConfig{
-			Endpoint:  fmt.Sprintf("https://%s", host),
+		ClientConfig: &gofish.ClientConfig{
+			Endpoint:  fmt.Sprintf("https://%s", "dummy.net"),
 			Username:  cfg.Redfish.User,
 			Password:  cfg.Redfish.Password,
 			Insecure:  true,
@@ -35,10 +35,16 @@ func NewRedfishClient(cfg config.Config, host string, ctxLogger *log.Entry) *Red
 	}
 }
 
+//SetEndpoint sets the redfish api endpoint
+func (r RedfishClient) SetEndpoint(n *model.Node) (err error) {
+	r.ClientConfig.Endpoint = fmt.Sprintf("https://%s", n.RemoteIP)
+	return
+}
+
 //LoadInventory loads the node's inventory via it's redfish api
-func (r RedfishClient) LoadInventory(n *model.IronicNode) (err error) {
+func (r RedfishClient) LoadInventory(n *model.Node) (err error) {
 	r.log.Debug("calling redfish api to load node info")
-	client, err := gofish.Connect(r.ClientConfig)
+	client, err := gofish.Connect(*r.ClientConfig)
 	if err != nil {
 		return
 	}
@@ -47,9 +53,11 @@ func (r RedfishClient) LoadInventory(n *model.IronicNode) (err error) {
 	r.client = client
 	r.data = &model.InspectonData{}
 	r.service = client.Service
-	if err = r.setBMCAddress(); err != nil {
-		return
-	}
+	/*
+		if err = r.setBMCAddress(); err != nil {
+			return
+		}
+	*/
 	if err = r.setInventory(); err != nil {
 		return
 	}
@@ -70,10 +78,12 @@ func (r RedfishClient) setBMCAddress() (err error) {
 	if err != nil || len(addr) == 0 {
 		return
 	}
+
 	if r.node.Host == addr[0] {
 		r.data.Inventory.BmcAddress = addr[0]
 		return
 	}
+
 	return fmt.Errorf("dns record %s does not map to ip: %s", addr[0], in[0].IPv4Addresses[0].Address)
 }
 
@@ -85,6 +95,11 @@ func (r RedfishClient) setInventory() (err error) {
 
 	r.data.Inventory.SystemVendor.Manufacturer = ch[0].Manufacturer
 	r.data.Inventory.SystemVendor.SerialNumber = ch[0].SerialNumber
+
+	// not performant string comparison due to toLower
+	if strings.Contains(strings.ToLower(ch[0].Manufacturer), "dell") {
+		r.data.Inventory.SystemVendor.SerialNumber = ch[0].SKU
+	}
 	r.data.Inventory.SystemVendor.ProductName = ch[0].Model
 
 	s, err := r.service.Systems()
@@ -172,15 +187,33 @@ func (r RedfishClient) setNetworkDevicesData(s *redfish.ComputerSystem) (err err
 	if err != nil || len(ethInt) == 0 {
 		return
 	}
+	intfs := make(map[string]model.NodeInterface, 0)
+	r.node.Interfaces = intfs
 	r.data.Inventory.Boot.PxeInterface = ethInt[0].MACAddress
 	r.data.BootInterface = "01-" + strings.ReplaceAll(ethInt[0].MACAddress, ":", "-")
 	r.data.Inventory.Boot.CurrentBootMode = "bios"
-	r.data.Inventory.Interfaces = make([]model.Interface, len(ethInt))
-	for i, e := range ethInt {
-		r.data.Inventory.Interfaces[i].MacAddress = e.MACAddress
-		r.data.Inventory.Interfaces[i].Name = e.ID
-		//r.data.Inventory.Interfaces[i].HasCarrier = true
+	for _, e := range ethInt {
+		intfs[mapInterfaceToNetbox(e.ID)] = model.NodeInterface{
+			Connection:   "",
+			ConnectionIP: "",
+			Mac:          e.MACAddress,
+		}
 	}
 
+	return
+}
+
+func mapInterfaceToNetbox(id string) (intf string) {
+	p := strings.Split(id, ".")
+	//NIC.Integrated.1-1-1 => L1
+	if p[1] == "Integrated" {
+		nr := strings.Split(p[2], "-")
+		intf = "L" + nr[1]
+	}
+	//NIC.Slot.3-2-1 => PCI3-P2
+	if p[1] == "Slot" {
+		nr := strings.Split(p[2], "-")
+		intf = fmt.Sprintf("PCI%s-P%s", nr[0], nr[1])
+	}
 	return
 }

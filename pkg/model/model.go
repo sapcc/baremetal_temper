@@ -1,18 +1,23 @@
 package model
 
-type IronicNode struct {
+import "github.com/netbox-community/go-netbox/netbox/models"
+
+type Node struct {
 	Name           string
-	IP             string
+	RemoteIP       string
+	PrimaryIP      string
 	UUID           string `json:"uuid"`
 	InstanceUUID   string
 	InstanceIPv4   string
 	Host           string
 	ResourceClass  string
+	Baremetal      bool
 	InspectionData InspectonData
-	Interfaces     []IronicInterface
+	Interfaces     map[string]NodeInterface
+	IpamAddresses  []models.IPAddress
 }
 
-type IronicInterface struct {
+type NodeInterface struct {
 	Connection   string
 	ConnectionIP string
 	Mac          string
@@ -38,7 +43,6 @@ type Inventory struct {
 	BmcAddress   string       `json:"bmc_address"`
 	SystemVendor SystemVendor `json:"system_vendor"`
 	Boot         Boot         `json:"boot"`
-	Interfaces   []Interface  `json:"interfaces"`
 	Disks        []Disk       `json:"disks"`
 	Memory       Memory       `json:"memory"`
 	CPU          CPU          `json:"cpu"`

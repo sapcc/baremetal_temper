@@ -33,7 +33,7 @@ type iDRACJob struct {
 	ID             string `json:"Id"`
 }
 
-func (d DellClient) Run(n *model.IronicNode) (err error) {
+func (d DellClient) Run(n *model.Node) (err error) {
 	client, err := gofish.Connect(d.gCfg)
 	defer client.Logout()
 	if err != nil {
@@ -55,18 +55,18 @@ func (d DellClient) Run(n *model.IronicNode) (err error) {
 	cf := wait.ConditionFunc(func() (bool, error) {
 		j, err := d.getJobByID(jobID)
 		if err != nil {
-			log.Errorf("Error loading diagnostics job info: %s", err.Error())
+			d.log.Errorf("Error loading diagnostics job info: %s", err.Error())
 			return false, err
 		}
 		if j.JobState == "Completed" {
-			log.Debug("diagnostics job completed")
+			d.log.Debug("diagnostics job completed")
 			return true, nil
 		}
-		log.Debugf("waiting for diagnostics job to be completed. state: %s", j.JobState)
+		d.log.Debugf("waiting for diagnostics job to be completed. state: %s", j.JobState)
 		return false, nil
 	})
 
-	if err = wait.Poll(60*time.Second, 120*time.Minute, cf); err != nil {
+	if err = wait.Poll(60*time.Second, 240*time.Minute, cf); err != nil {
 		return err
 	}
 
@@ -74,7 +74,7 @@ func (d DellClient) Run(n *model.IronicNode) (err error) {
 	passed := true
 	for r, i := range res {
 		if i < 1 {
-			log.Errorf("diagnostic test did not pass: %s", r)
+			d.log.Errorf("diagnostic test did not pass: %s", r)
 			passed = false
 		}
 	}

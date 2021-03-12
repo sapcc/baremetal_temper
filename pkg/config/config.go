@@ -18,6 +18,7 @@ type Config struct {
 	NetboxNodesPath string        `yaml:"netbox_nodes_path"`
 	RulesPath       string        `yaml:"rules_path"`
 	Region          string        `yaml:"region"`
+	Rack            string        `yaml:"rack"`
 	Domain          string        `yaml:"domain"`
 	NameSpace       string        `yaml:"namespace"`
 	Deployment      Deployment    `yaml:"deployment"`

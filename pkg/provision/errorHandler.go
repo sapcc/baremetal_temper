@@ -9,7 +9,7 @@ import (
 
 type SchedulerError struct {
 	Err  string
-	Node *model.IronicNode
+	Node model.Node
 }
 
 func (n *SchedulerError) Error() string {
@@ -23,7 +23,7 @@ type ErrorHandler struct {
 }
 
 func NewErrorHandler(ctx context.Context, p *Provisioner) (e ErrorHandler) {
-	errors := make(chan error, 0)
+	errors := make(chan error)
 	e.Errors = errors
 	e.ctx = ctx
 	e.p = p
@@ -32,20 +32,20 @@ func NewErrorHandler(ctx context.Context, p *Provisioner) (e ErrorHandler) {
 }
 
 func (e ErrorHandler) initHandler() {
-	go func() {
+	for {
 		select {
 		case err := <-e.Errors:
 			if serr, ok := err.(*SchedulerError); ok {
-				log.Errorf("error tempering node %s. err: %s", serr.Node.UUID, serr.Err)
+				log.Errorf("error tempering node %s. err: %s", serr.Node.Name, serr.Err)
 				if serr.Node.InstanceUUID != "" {
-					if err = e.p.clientOpenstack.DeleteTestInstance(serr.Node); err != nil {
+					if err = e.p.clientOpenstack.DeleteTestInstance(&serr.Node); err != nil {
 						log.Error("cannot delete compute instance %s. err: %s", serr.Node.InstanceUUID, err.Error())
 					}
 				}
-				if err = e.p.clientOpenstack.DeleteNode(serr.Node); err != nil {
+				if err = e.p.clientOpenstack.DeleteNode(&serr.Node); err != nil {
 					log.Errorf("cannot delete node %s. err: %s", serr.Node.Name, err.Error())
 				}
-				if err = e.p.clientNetbox.SetNodeStatusFailed(serr.Node); err != nil {
+				if err = e.p.clientNetbox.SetStatusFailed(&serr.Node, serr.Err); err != nil {
 					log.Errorf("cannot set node %s status in netbox. err: %s", serr.Node.Name, err.Error())
 				}
 			} else {
@@ -54,5 +54,6 @@ func (e ErrorHandler) initHandler() {
 		case <-e.ctx.Done():
 			return
 		}
-	}()
+	}
+
 }

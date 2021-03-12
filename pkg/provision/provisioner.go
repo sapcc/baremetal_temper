@@ -9,14 +9,14 @@ import (
 )
 
 type Provisioner struct {
-	ironicNode      model.IronicNode
+	Node            model.Node
 	clientOpenstack *clients.Client
 	clientRedfish   *clients.RedfishClient
 	clientInspector *clients.InspectorClient
 	clientNetbox    *clients.NetboxClient
 }
 
-func NewProvisioner(node model.IronicNode, cfg config.Config) (*Provisioner, error) {
+func NewProvisioner(node model.Node, cfg config.Config) (*Provisioner, error) {
 	ctxLogger := log.WithFields(log.Fields{
 		"node": node.Name,
 	})
@@ -24,7 +24,7 @@ func NewProvisioner(node model.IronicNode, cfg config.Config) (*Provisioner, err
 	if err != nil {
 		return nil, err
 	}
-	clientRedfish := clients.NewRedfishClient(cfg, node.IP, ctxLogger)
+	clientRedfish := clients.NewRedfishClient(cfg, ctxLogger)
 	clientInspector := clients.NewInspectorClient(cfg, ctxLogger)
 	clientNetbox, err := clients.NewNetboxClient(cfg, ctxLogger)
 	if err != nil {

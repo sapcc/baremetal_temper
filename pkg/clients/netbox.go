@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 
 	runtimeclient "github.com/go-openapi/runtime/client"
 	netboxclient "github.com/netbox-community/go-netbox/netbox/client"
 	"github.com/netbox-community/go-netbox/netbox/client/dcim"
+	"github.com/netbox-community/go-netbox/netbox/client/ipam"
 	"github.com/netbox-community/go-netbox/netbox/models"
 	"github.com/sapcc/ironic_temper/pkg/config"
 	"github.com/sapcc/ironic_temper/pkg/model"
@@ -36,24 +39,106 @@ func NewNetboxClient(cfg config.Config, ctxLogger *log.Entry) (n *NetboxClient, 
 	return
 }
 
-//Activate does not return error to not trigger errorhandler and cleanup of node
-func (n *NetboxClient) Activate(i *model.IronicNode) error {
-	p, err := n.updateNodeByName(i.Name, models.WritableDeviceWithConfigContext{
-		Status: models.DeviceWithConfigContextStatusValueActive,
+//Update node serial and primaryIP. Does not return error to not trigger errorhandler and cleanup of node
+func (n *NetboxClient) Update(i *model.Node) error {
+	params := models.WritableDeviceWithConfigContext{
+		Serial: i.InspectionData.Inventory.SystemVendor.SerialNumber,
+	}
+	d, err := n.getDevice(nil, &i.Name)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+	if d.PrimaryIP == nil {
+		ips, err := n.client.Ipam.IpamIPAddressesList(&ipam.IpamIPAddressesListParams{
+			Address: &i.PrimaryIP,
+			Context: context.Background(),
+		}, nil)
+		if err != nil {
+			log.Error(err)
+			return nil
+		}
+		if len(ips.Payload.Results) > 1 || len(ips.Payload.Results) == 0 {
+			log.Errorf("could not find ip %s", i.PrimaryIP)
+			return nil
+		}
+		params.PrimaryIp4 = &ips.Payload.Results[0].ID
+	}
+
+	_, err = n.updateNodeInfo(i.Name, params)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+
+	if err = n.updateNodeInterfaces(i); err != nil {
+		log.Error(err)
+		return nil
+	}
+
+	return nil
+}
+
+//LoadIpamAddresses loads all ipam addresse of a node
+func (n *NetboxClient) LoadIpamAddresses(i *model.Node) (err error) {
+	n.log.Debug("calling netbox api to load ipam Addresses")
+	block := strings.Split(i.Name, "-")[1]
+	name := strings.Split(i.Name, "-")[0]
+	var limit int64
+	limit = 200
+	al, err := n.client.Ipam.IpamIPAddressesList(&ipam.IpamIPAddressesListParams{
+		Q:       &block,
+		Context: context.Background(),
+		Limit:   &limit,
+	}, nil)
+	if err != nil {
+		return
+	}
+	addr := al.Payload.Results
+	for _, a := range addr {
+		if strings.Contains(a.DNSName, i.Name) {
+			ip, _, err := net.ParseCIDR(*a.Address)
+			if err != nil {
+				return err
+			}
+			fmt.Println(a.DNSName, i.Name, ip.String())
+			i.PrimaryIP = ip.String()
+		}
+		if strings.Contains(a.DNSName, name+"r") {
+			ip, _, err := net.ParseCIDR(*a.Address)
+			if err != nil {
+				return err
+			}
+			i.RemoteIP = ip.String()
+		}
+		if strings.Contains(a.DNSName, name) {
+			i.IpamAddresses = append(i.IpamAddresses, *a)
+		}
+	}
+	return
+}
+
+//SetStatusStaged does not return error to not trigger errorhandler and cleanup of node
+func (n *NetboxClient) SetStatusStaged(i *model.Node) error {
+	p, err := n.updateNodeInfo(i.Name, models.WritableDeviceWithConfigContext{
+		Status:   models.DeviceWithConfigContextStatusValueStaged,
+		Comments: "temper successful",
 	})
 	if err != nil {
 		log.Error(err)
+		return nil
 	}
-	if *p.Payload.Status.Value != models.DeviceWithConfigContextStatusValueActive {
+	if *p.Payload.Status.Value != models.DeviceWithConfigContextStatusValueStaged {
 		log.Errorf("cannot update node status in netbox")
 	}
 	return nil
 }
 
-//SetNodeStatusFailed sets status to failed in netbox
-func (n *NetboxClient) SetNodeStatusFailed(i *model.IronicNode) (err error) {
-	p, err := n.updateNodeByName(i.Name, models.WritableDeviceWithConfigContext{
-		Status: models.DeviceWithConfigContextStatusValueFailed,
+//SetStatusFailed sets status to failed in netbox
+func (n *NetboxClient) SetStatusFailed(i *model.Node, comments string) (err error) {
+	p, err := n.updateNodeInfo(i.Name, models.WritableDeviceWithConfigContext{
+		Status:   models.DeviceWithConfigContextStatusValueFailed,
+		Comments: comments,
 	})
 	if err != nil {
 		return
@@ -64,48 +149,22 @@ func (n *NetboxClient) SetNodeStatusFailed(i *model.IronicNode) (err error) {
 	return
 }
 
-func (n *NetboxClient) updateNodeByName(name string, data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesUpdateOK, err error) {
-	l, err := n.client.Dcim.DcimDevicesList(&dcim.DcimDevicesListParams{
-		Name:    &name,
-		Context: context.Background(),
-	}, nil)
+//LoadInterfaces loads additional node interface info
+func (n *NetboxClient) LoadInterfaces(i *model.Node) (err error) {
+	n.log.Debug("calling netbox api to load node interfaces")
+	in, err := n.getInterfaces(i)
 	if err != nil {
 		return
 	}
-	if len(l.Payload.Results) > 1 || len(l.Payload.Results) == 0 {
-		return p, fmt.Errorf("could not find node with name %s", name)
-	}
-	node := l.Payload.Results[0]
-	p, err = n.client.Dcim.DcimDevicesUpdate(&dcim.DcimDevicesUpdateParams{
-		ID:      node.ID,
-		Data:    &data,
-		Context: context.Background(),
-	}, nil)
-
-	return
-}
-
-func (n *NetboxClient) LoadInterfaces(i *model.IronicNode) (err error) {
-	n.log.Debug("calling netbox api to load node interface")
-	l, err := n.client.Dcim.DcimInterfacesList(&dcim.DcimInterfacesListParams{
-		Device:  &i.Name,
-		Context: context.Background(),
-	}, nil)
-	if err != nil {
-		return
-	}
-	if len(l.Payload.Results) == 0 {
-		return fmt.Errorf("could not find interfaces for node with name %s", i.Name)
-	}
-
-	intfs := make([]model.IronicInterface, 0)
-
-	for _, i := range l.Payload.Results {
-		if i.MacAddress == nil {
+	for _, in := range in {
+		if in.ConnectionStatus == nil || !*in.ConnectionStatus.Value {
+			continue
+		}
+		if !strings.Contains(*in.Name, "PCI") && !strings.Contains(*in.Name, "LCI") {
 			continue
 		}
 
-		conn, ok := i.ConnectedEndpoint.(map[string]interface{})
+		conn, ok := in.ConnectedEndpoint.(map[string]interface{})
 		if !ok {
 			return fmt.Errorf("no device connection info")
 		}
@@ -116,32 +175,141 @@ func (n *NetboxClient) LoadInterfaces(i *model.IronicNode) (err error) {
 
 		ip, err := n.getInterfaceIP(fmt.Sprintf("%v", device["id"]))
 		if err != nil {
-			return err
+			log.Error(err)
+			continue
 		}
-		fmt.Println(ip.String())
 
-		intf := model.IronicInterface{
-			Connection:   fmt.Sprintf("%v", device["name"]),
-			ConnectionIP: ip.String(),
-			Mac:          *i.MacAddress,
+		intf, ok := i.Interfaces[*in.Name]
+		if !ok {
+			log.Infof("redfish missing interface: %s", *in.Name)
+			intf = model.NodeInterface{}
 		}
-		intfs = append(intfs, intf)
+
+		intf.Connection = fmt.Sprintf("%v", device["name"])
+		intf.ConnectionIP = ip.String()
+		i.Interfaces[*in.Name] = intf
+		if in.MacAddress == nil {
+			log.Infof("netbox interface %s no mac", *in.Name)
+			continue
+		}
+
+		if *in.MacAddress != intf.Mac {
+			log.Infof("netbox / redfish interface %s mac mismatch: %s, %s", *in.Name, intf.Mac, *in.MacAddress)
+		}
+
 	}
-	i.Interfaces = append(i.Interfaces, intfs...)
 	return
 }
 
-func (n *NetboxClient) getInterfaceIP(id string) (ip net.IP, err error) {
-	l, err := n.client.Dcim.DcimDevicesList(&dcim.DcimDevicesListParams{
-		ID:      &id,
+//LoadPlannedNodes loads all nodes in status planned
+func (n *NetboxClient) LoadPlannedNodes(cfg config.Config) (nodes []*models.DeviceWithConfigContext, err error) {
+	role := "server"
+	status := "planned"
+	r, err := n.client.Dcim.DcimRacksList(&dcim.DcimRacksListParams{
+		Name:    &cfg.Rack,
+		Context: context.Background(),
+	}, nil)
+	fmt.Println(r.Payload.Results)
+	if err != nil || len(r.Payload.Results) == 0 {
+		return
+	}
+	rID := strconv.FormatInt(r.Payload.Results[0].ID, 10)
+
+	param := dcim.DcimDevicesListParams{
+		Context: context.Background(),
+		Status:  &status,
+		Role:    &role,
+		Region:  &cfg.Region,
+		RackID:  &rID,
+	}
+	l, err := n.client.Dcim.DcimDevicesList(&param, nil)
+	if err != nil {
+		return
+	}
+	nodes = l.Payload.Results
+	return
+}
+
+func (n *NetboxClient) updateNodeInfo(name string, data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesUpdateOK, err error) {
+	node, err := n.getDevice(nil, &name)
+	if err != nil {
+		return
+	}
+	data.DeviceType = &node.DeviceType.ID
+	data.DeviceRole = &node.DeviceRole.ID
+	data.Site = &node.Site.ID
+	p, err = n.client.Dcim.DcimDevicesUpdate(&dcim.DcimDevicesUpdateParams{
+		ID:      node.ID,
+		Data:    &data,
+		Context: context.Background(),
+	}, nil)
+
+	return
+}
+
+func (n *NetboxClient) updateNodeInterfaces(i *model.Node) (err error) {
+	intf, err := n.getInterfaces(i)
+	if err != nil {
+		return
+	}
+	for _, in := range intf {
+		nIntf, ok := i.Interfaces[*in.Name]
+		if ok {
+			_, err = n.client.Dcim.DcimInterfacesUpdate(&dcim.DcimInterfacesUpdateParams{
+				ID: in.ID,
+				Data: &models.WritableInterface{
+					MacAddress:  &nIntf.Mac,
+					Name:        in.Name,
+					Type:        in.Type.Value,
+					TaggedVlans: []int64{},
+					Device:      &in.Device.ID,
+				},
+				Context: context.Background(),
+			}, nil)
+		}
+	}
+	return
+}
+
+func (n *NetboxClient) getInterfaces(i *model.Node) (in []*models.Interface, err error) {
+	l, err := n.client.Dcim.DcimInterfacesList(&dcim.DcimInterfacesListParams{
+		Device:  &i.Name,
 		Context: context.Background(),
 	}, nil)
 	if err != nil {
 		return
 	}
-	if len(l.Payload.Results) == 0 {
-		return ip, fmt.Errorf("no device found")
+	in = l.Payload.Results
+	if len(in) == 0 {
+		return in, fmt.Errorf("could not find interfaces for node with name %s", i.Name)
 	}
-	ip, _, err = net.ParseCIDR(*l.Payload.Results[0].PrimaryIp4.Address)
 	return
+}
+
+func (n *NetboxClient) getInterfaceIP(id string) (ip net.IP, err error) {
+	d, err := n.getDevice(&id, nil)
+	if d.PrimaryIp4 == nil {
+		return ip, fmt.Errorf("no ip available for switch %s", id)
+	}
+	ip, _, err = net.ParseCIDR(*d.PrimaryIp4.Address)
+	return
+}
+
+func (n *NetboxClient) getDevice(id, name *string) (node *models.DeviceWithConfigContext, err error) {
+	param := dcim.DcimDevicesListParams{
+		Context: context.Background(),
+	}
+	if id != nil {
+		param.ID = id
+	} else {
+		param.Name = name
+	}
+	l, err := n.client.Dcim.DcimDevicesList(&param, nil)
+	if err != nil {
+		return
+	}
+	if len(l.Payload.Results) == 0 {
+		return node, fmt.Errorf("no device found")
+	}
+	return l.Payload.Results[0], nil
 }
