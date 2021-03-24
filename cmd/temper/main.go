@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/evalphobia/logrus_sentry"
-	"github.com/sapcc/ironic_temper/pkg/config"
-	"github.com/sapcc/ironic_temper/pkg/provision"
+	"github.com/sapcc/baremetal_temper/pkg/config"
+	"github.com/sapcc/baremetal_temper/pkg/provision"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )

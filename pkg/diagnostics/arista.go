@@ -6,8 +6,8 @@ import (
 
 	"github.com/aristanetworks/goeapi"
 	"github.com/aristanetworks/goeapi/module"
-	"github.com/sapcc/ironic_temper/pkg/config"
-	"github.com/sapcc/ironic_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/config"
+	"github.com/sapcc/baremetal_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 )
 

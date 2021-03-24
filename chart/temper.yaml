@@ -1,0 +1,20 @@
+# Helloworld-go app deploment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temper
+  namespace: monsoon3
+spec:
+  replicas: 1
+  selector:
+    matchLabels: &labels
+      app: baremetal-temper
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      containers:
+        - name: baremetal-temper
+          image: keppel.eu-de-1.cloud.sap/ccloud/baremetal_temper01
+          command:
+          - temper

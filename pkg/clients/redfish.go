@@ -1,12 +1,13 @@
 package clients
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"strings"
 
-	"github.com/sapcc/ironic_temper/pkg/config"
-	"github.com/sapcc/ironic_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/config"
+	"github.com/sapcc/baremetal_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 	"github.com/stmcginnis/gofish"
 	"github.com/stmcginnis/gofish/redfish"
@@ -115,7 +116,7 @@ func (r RedfishClient) setInventory() (err error) {
 	if err = r.setCPUs(s[0]); err != nil {
 		return
 	}
-	if err = r.setNetworkDevicesData(s[0]); err != nil {
+	if err = r.setNetworkDevicesData(ch[0]); err != nil {
 		return
 	}
 	return
@@ -171,7 +172,6 @@ func (r RedfishClient) setDisks(s *redfish.ComputerSystem) (err error) {
 	r.data.RootDisk = rootDisk
 	return
 }
-
 func (r RedfishClient) setCPUs(s *redfish.ComputerSystem) (err error) {
 	cpu, err := s.Processors()
 	if err != nil || len(cpu) == 0 {
@@ -182,29 +182,67 @@ func (r RedfishClient) setCPUs(s *redfish.ComputerSystem) (err error) {
 	return
 }
 
-func (r RedfishClient) setNetworkDevicesData(s *redfish.ComputerSystem) (err error) {
-	ethInt, err := s.EthernetInterfaces()
-	if err != nil || len(ethInt) == 0 {
-		return
-	}
+func (r RedfishClient) setNetworkDevicesData(c *redfish.Chassis) (err error) {
 	intfs := make(map[string]model.NodeInterface, 0)
-	r.node.Interfaces = intfs
-	r.data.Inventory.Boot.PxeInterface = ethInt[0].MACAddress
-	r.data.BootInterface = "01-" + strings.ReplaceAll(ethInt[0].MACAddress, ":", "-")
-	r.data.Inventory.Boot.CurrentBootMode = "bios"
-	for _, e := range ethInt {
-		intfs[mapInterfaceToNetbox(e.ID)] = model.NodeInterface{
-			Connection:   "",
-			ConnectionIP: "",
-			Mac:          e.MACAddress,
+	na, err := c.NetworkAdapters()
+	for _, a := range na {
+		slot := a.Controllers[0].Location.PartLocation.LocationOrdinalValue
+		np, err := a.NetworkPorts()
+		if err != nil {
+			return err
+		}
+		for _, n := range np {
+			mac := n.AssociatedNetworkAddresses[0]
+			id := fmt.Sprintf("PCI%d-P%s", slot, n.ID)
+			fmt.Println(id, mac, n.LinkStatus)
+			if n.LinkStatus == redfish.UpPortLinkStatus && r.data.BootInterface == "" {
+				mac, err = parseMac(mac, '-')
+				if err != nil {
+					return err
+				}
+				r.data.Inventory.Boot.PxeInterface = mac
+				r.data.BootInterface = "01-" + mac
+			}
+			mac, err = parseMac(mac, ':')
+			if err != nil {
+				return err
+			}
+			intfs[id] = model.NodeInterface{
+				Connection:     "",
+				ConnectionIP:   "",
+				Mac:            mac,
+				PortLinkStatus: n.LinkStatus,
+			}
 		}
 	}
-
+	r.node.Interfaces = intfs
+	r.data.Inventory.Boot.CurrentBootMode = "bios"
 	return
+}
+
+func parseMac(s string, sep rune) (string, error) {
+	if len(s) < 14 {
+		return "", fmt.Errorf("invalid MAC address: %s", s)
+	}
+	s = strings.ReplaceAll(s, ":", "")
+	s = strings.ReplaceAll(s, "-", "")
+	var buf bytes.Buffer
+	for i, char := range s {
+		buf.WriteRune(char)
+		if i%2 == 1 && i != len(s)-1 {
+			buf.WriteRune(sep)
+		}
+
+	}
+
+	return buf.String(), nil
 }
 
 func mapInterfaceToNetbox(id string) (intf string) {
 	p := strings.Split(id, ".")
+	if len(p) >= 1 {
+		return id
+	}
 	//NIC.Integrated.1-1-1 => L1
 	if p[1] == "Integrated" {
 		nr := strings.Split(p[2], "-")

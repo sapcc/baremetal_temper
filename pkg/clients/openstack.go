@@ -10,8 +10,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/sapcc/ironic_temper/pkg/config"
-	"github.com/sapcc/ironic_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/config"
+	"github.com/sapcc/baremetal_temper/pkg/model"
 
 	"github.com/go-ping/ping"
 	"github.com/gophercloud/gophercloud"
@@ -117,7 +117,7 @@ func (c *Client) ServiceEnabled(service string) (bool, error) {
 	}
 	s, err := iDservices.ExtractServices(a)
 	if len(s) == 0 {
-		return false, fmt.Errorf("service not found")
+		return false, fmt.Errorf("no service found")
 	}
 	if s[0].Enabled {
 		return true, nil

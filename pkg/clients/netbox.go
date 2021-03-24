@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 
 	runtimeclient "github.com/go-openapi/runtime/client"
@@ -12,8 +11,8 @@ import (
 	"github.com/netbox-community/go-netbox/netbox/client/dcim"
 	"github.com/netbox-community/go-netbox/netbox/client/ipam"
 	"github.com/netbox-community/go-netbox/netbox/models"
-	"github.com/sapcc/ironic_temper/pkg/config"
-	"github.com/sapcc/ironic_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/config"
+	"github.com/sapcc/baremetal_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -205,22 +204,13 @@ func (n *NetboxClient) LoadInterfaces(i *model.Node) (err error) {
 func (n *NetboxClient) LoadPlannedNodes(cfg config.Config) (nodes []*models.DeviceWithConfigContext, err error) {
 	role := "server"
 	status := "planned"
-	r, err := n.client.Dcim.DcimRacksList(&dcim.DcimRacksListParams{
-		Name:    &cfg.Rack,
-		Context: context.Background(),
-	}, nil)
-	fmt.Println(r.Payload.Results)
-	if err != nil || len(r.Payload.Results) == 0 {
-		return
-	}
-	rID := strconv.FormatInt(r.Payload.Results[0].ID, 10)
 
 	param := dcim.DcimDevicesListParams{
 		Context: context.Background(),
 		Status:  &status,
 		Role:    &role,
 		Region:  &cfg.Region,
-		RackID:  &rID,
+		Q:       cfg.NetboxQuery,
 	}
 	l, err := n.client.Dcim.DcimDevicesList(&param, nil)
 	if err != nil {

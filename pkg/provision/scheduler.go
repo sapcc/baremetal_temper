@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/netbox-community/go-netbox/netbox/models"
-	"github.com/sapcc/ironic_temper/pkg/clients"
-	"github.com/sapcc/ironic_temper/pkg/config"
-	"github.com/sapcc/ironic_temper/pkg/diagnostics"
-	"github.com/sapcc/ironic_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/clients"
+	"github.com/sapcc/baremetal_temper/pkg/config"
+	"github.com/sapcc/baremetal_temper/pkg/diagnostics"
+	"github.com/sapcc/baremetal_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -139,7 +139,7 @@ func (r *Scheduler) loadNodes() (nodes []model.Node, err error) {
 		return
 	}
 	baremetal := false
-	if baremetal, err = c.ServiceEnabled("baremetal"); err != nil {
+	if baremetal, err = c.ServiceEnabled("ironic"); err != nil {
 		r.log.Error(err)
 	}
 	baremetal = false

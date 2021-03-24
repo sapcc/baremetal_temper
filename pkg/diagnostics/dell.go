@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sapcc/ironic_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 	"github.com/stmcginnis/gofish"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -40,7 +40,7 @@ func (d DellClient) Run(n *model.Node) (err error) {
 		return
 	}
 	d.client = client
-	payload := iDracDiagnostics{RebootJobType: "GracefulRebootWithForcedShutdown", RunMode: "Express"} //Extended
+	payload := iDracDiagnostics{RebootJobType: "GracefulRebootWithForcedShutdown", RunMode: "Extended"} //Express
 	resp, err := client.Post("/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.RunePSADiagnostics", payload)
 	if err != nil {
 		return err

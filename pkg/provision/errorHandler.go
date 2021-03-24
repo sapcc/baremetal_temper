@@ -3,7 +3,7 @@ package provision
 import (
 	"context"
 
-	"github.com/sapcc/ironic_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 )
 

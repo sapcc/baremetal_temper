@@ -1,6 +1,9 @@
 package model
 
-import "github.com/netbox-community/go-netbox/netbox/models"
+import (
+	"github.com/netbox-community/go-netbox/netbox/models"
+	"github.com/stmcginnis/gofish/redfish"
+)
 
 type Node struct {
 	Name           string
@@ -18,9 +21,10 @@ type Node struct {
 }
 
 type NodeInterface struct {
-	Connection   string
-	ConnectionIP string
-	Mac          string
+	Connection     string
+	ConnectionIP   string
+	Mac            string
+	PortLinkStatus redfish.PortLinkStatus
 }
 
 type InspectonData struct {

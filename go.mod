@@ -1,4 +1,4 @@
-module github.com/sapcc/ironic_temper
+module github.com/sapcc/baremetal_temper
 
 go 1.14
 
