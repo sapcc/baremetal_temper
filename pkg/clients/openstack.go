@@ -59,12 +59,6 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 		return nil, err
 	}
 
-	bc, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
-		Region: cfg.Region,
-	})
-	if err != nil {
-		return nil, err
-	}
 	dc, err := openstack.NewDNSV2(provider, gophercloud.EndpointOpts{
 		Region: cfg.Region,
 	})
@@ -83,11 +77,19 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	version, err := apiversions.Get(bc, "v1").Extract()
-	if err != nil {
-		return nil, err
+	bc, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
+		Region: cfg.Region,
+	})
+	if err == nil {
+		version, err := apiversions.Get(bc, "v1").Extract()
+		if err != nil {
+			return nil, err
+		}
+		bc.Microversion = version.Version
+	} else {
+		ctxLogger.Error("baremetal service error", err.Error())
 	}
-	bc.Microversion = version.Version
+
 	return &Client{baremetalClient: bc, dnsClient: dc, computeClient: cc, keystoneClient: ic, domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
 }
 
