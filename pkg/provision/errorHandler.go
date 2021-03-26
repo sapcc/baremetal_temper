@@ -55,5 +55,4 @@ func (e ErrorHandler) initHandler() {
 			return
 		}
 	}
-
 }

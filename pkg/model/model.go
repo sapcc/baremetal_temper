@@ -23,6 +23,7 @@ type Node struct {
 type NodeInterface struct {
 	Connection     string
 	ConnectionIP   string
+	Port           string
 	Mac            string
 	PortLinkStatus redfish.PortLinkStatus
 }

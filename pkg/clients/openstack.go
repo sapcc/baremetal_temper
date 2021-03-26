@@ -62,19 +62,24 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 	bc, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
 		Region: cfg.Region,
 	})
-
+	if err != nil {
+		return nil, err
+	}
 	dc, err := openstack.NewDNSV2(provider, gophercloud.EndpointOpts{
 		Region: cfg.Region,
 	})
-
+	if err != nil {
+		return nil, err
+	}
 	cc, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
 		Region: cfg.Region,
 	})
-
+	if err != nil {
+		return nil, err
+	}
 	ic, err := openstack.NewIdentityV3(provider, gophercloud.EndpointOpts{
 		Region: cfg.Region,
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +224,6 @@ func (c *Client) updateNode(opts nodes.UpdateOpts, n *model.Node) (err error) {
 	cf := wait.ConditionFunc(func() (bool, error) {
 		r := nodes.Update(c.baremetalClient, n.UUID, opts)
 		_, err = r.Extract()
-		fmt.Println(err)
 		if err != nil {
 			return false, nil
 		}

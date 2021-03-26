@@ -1,9 +1,9 @@
 package diagnostics
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -23,6 +23,39 @@ type ACIClient struct {
 	co  map[string]*container.Container
 }
 
+type lldp struct {
+	LldpIf lldpIf `json:"lldpIf"`
+}
+
+type lldpIf struct {
+	LldpIfAttributes lldpIfAttributes `json:"attributes"`
+	LldpIfChildren   []lldpIfChildren `json:"children"`
+}
+
+type lldpIfAttributes struct {
+	ID       string `json:"id"`
+	Mac      string `json:"mac"`
+	PortMode string `json:"portMode"`
+	Status   string `json:"status"`
+}
+
+type lldpIfChildren struct {
+	LldpAdjEp lldpAdjEp `json:"lldpAdjEp"`
+}
+
+type lldpAdjEp struct {
+	LldpAdjEpAttributes lldpAdjEpAttributes `json:"attributes"`
+}
+
+type lldpAdjEpAttributes struct {
+	ChassisIdT string `json:"chassisIdT"`
+	MgmtIp     string `json:"mgmtIp"`
+	PortIdV    string `json:"portIdV"`
+	PortVlan   string `json:"portVlan"`
+	Status     string `json:"status"`
+	SysDesc    string `json:"sysDesc"`
+}
+
 func (a ACIClient) Run(n *model.Node) (err error) {
 	a.log.Debug("calling aci api for node cable check")
 	a.c = make(map[string]*client.Client)
@@ -33,7 +66,7 @@ func (a ACIClient) Run(n *model.Node) (err error) {
 			continue
 		}
 		if i.PortLinkStatus == redfish.DownPortLinkStatus {
-			noLldp = append(noLldp, iName+": InterfaceDown")
+			noLldp = append(noLldp, iName+"<interface_down>")
 			continue
 		}
 		var co *container.Container
@@ -45,19 +78,33 @@ func (a ACIClient) Run(n *model.Node) (err error) {
 		l, _ := co.Search("imdata").Children()
 		foundNeighbor := false
 
+	aciPortLoop:
 		for _, c := range l {
-			rgx := regexp.MustCompile(`\["(.*?)"\]`)
-			m := c.S("lldpIf").S("children").S("lldpAdjEp", "attributes").S("portIdV").String()
-			mac := rgx.FindStringSubmatch(m)
-			fmt.Println(c.S("lldpIf").S("children").S("lldpAdjEp", "attributes").S("portIdV").String(), i.Mac)
-			if strings.ToLower(strings.ReplaceAll(i.Mac, ":", "")) == strings.ReplaceAll(mac[1], ":", "") {
-				a.log.Debugf("found aci lldap neighbor: %s", m)
-				foundNeighbor = true
-				break
+			var l lldp
+			if err = json.Unmarshal(c.Bytes(), &l); err != nil {
+				a.log.Errorf("cannot unmarshal aci lldp: %s", err.Error())
+				continue
+			}
+			for _, ch := range l.LldpIf.LldpIfChildren {
+				if ch.LldpAdjEp.LldpAdjEpAttributes.SysDesc != "" {
+					interCon := strings.Split(ch.LldpAdjEp.LldpAdjEpAttributes.SysDesc, "/")
+					a.log.Debugf("intra aci: aci-%s", interCon[2])
+					continue
+				}
+				if prepareMac(i.Mac) == prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV) {
+					if l.LldpIf.LldpIfAttributes.ID != i.Port {
+						errMsg := fmt.Sprintf("%s<wrong switch port: %s>", iName, l.LldpIf.LldpIfAttributes.ID)
+						noLldp = append(noLldp, errMsg)
+						break aciPortLoop
+					}
+					a.log.Debugf("found aci lldp neighbor: %s", i.Mac)
+					foundNeighbor = true
+					break aciPortLoop
+				}
 			}
 		}
 		if !foundNeighbor {
-			noLldp = append(noLldp, iName)
+			noLldp = append(noLldp, iName+"<lldp_missing>")
 		}
 	}
 
@@ -80,7 +127,6 @@ func (a ACIClient) getClient(host string) (c *client.Client) {
 
 func (a ACIClient) getContainer(host string) (co *container.Container, err error) {
 	co, ok := a.co[host]
-	fmt.Println(ok, host)
 	if ok {
 		return
 	}
@@ -110,4 +156,8 @@ func (a ACIClient) getContainer(host string) (co *container.Container, err error
 	}
 	a.co[host] = co
 	return
+}
+
+func prepareMac(m string) string {
+	return strings.ToLower(strings.ReplaceAll(m, ":", ""))
 }

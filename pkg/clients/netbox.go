@@ -186,6 +186,7 @@ func (n *NetboxClient) LoadInterfaces(i *model.Node) (err error) {
 
 		intf.Connection = fmt.Sprintf("%v", device["name"])
 		intf.ConnectionIP = ip.String()
+		intf.Port = fmt.Sprintf("%v", conn["name"])
 		i.Interfaces[*in.Name] = intf
 		if in.MacAddress == nil {
 			log.Infof("netbox interface %s no mac", *in.Name)

@@ -185,7 +185,11 @@ func (r RedfishClient) setCPUs(s *redfish.ComputerSystem) (err error) {
 func (r RedfishClient) setNetworkDevicesData(c *redfish.Chassis) (err error) {
 	intfs := make(map[string]model.NodeInterface, 0)
 	na, err := c.NetworkAdapters()
+	if err != nil {
+		return
+	}
 	for _, a := range na {
+		fmt.Println(a.Name, err)
 		slot := a.Controllers[0].Location.PartLocation.LocationOrdinalValue
 		np, err := a.NetworkPorts()
 		if err != nil {
@@ -193,8 +197,7 @@ func (r RedfishClient) setNetworkDevicesData(c *redfish.Chassis) (err error) {
 		}
 		for _, n := range np {
 			mac := n.AssociatedNetworkAddresses[0]
-			id := fmt.Sprintf("PCI%d-P%s", slot, n.ID)
-			fmt.Println(id, mac, n.LinkStatus)
+			id := mapInterfaceToNetbox(n.ID, slot)
 			if n.LinkStatus == redfish.UpPortLinkStatus && r.data.BootInterface == "" {
 				mac, err = parseMac(mac, '-')
 				if err != nil {
@@ -221,7 +224,7 @@ func (r RedfishClient) setNetworkDevicesData(c *redfish.Chassis) (err error) {
 }
 
 func parseMac(s string, sep rune) (string, error) {
-	if len(s) < 14 {
+	if len(s) < 12 {
 		return "", fmt.Errorf("invalid MAC address: %s", s)
 	}
 	s = strings.ReplaceAll(s, ":", "")
@@ -238,10 +241,10 @@ func parseMac(s string, sep rune) (string, error) {
 	return buf.String(), nil
 }
 
-func mapInterfaceToNetbox(id string) (intf string) {
+func mapInterfaceToNetbox(id string, slot int) (intf string) {
 	p := strings.Split(id, ".")
-	if len(p) >= 1 {
-		return id
+	if len(p) <= 1 {
+		return fmt.Sprintf("PCI%d-P%s", slot, id)
 	}
 	//NIC.Integrated.1-1-1 => L1
 	if p[1] == "Integrated" {
