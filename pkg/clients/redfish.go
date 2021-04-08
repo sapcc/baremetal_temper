@@ -3,7 +3,7 @@ package clients
 import (
 	"bytes"
 	"fmt"
-	"net"
+	"regexp"
 	"strings"
 
 	"github.com/sapcc/baremetal_temper/pkg/config"
@@ -17,7 +17,6 @@ type RedfishClient struct {
 	ClientConfig *gofish.ClientConfig
 	client       *gofish.APIClient
 	service      *gofish.Service
-	data         *model.InspectonData
 	node         *model.Node
 	log          *log.Entry
 }
@@ -52,91 +51,63 @@ func (r RedfishClient) LoadInventory(n *model.Node) (err error) {
 	r.node = n
 	defer client.Logout()
 	r.client = client
-	r.data = &model.InspectonData{}
 	r.service = client.Service
-	/*
-		if err = r.setBMCAddress(); err != nil {
-			return
-		}
-	*/
-	if err = r.setInventory(); err != nil {
+	if err = r.setInventory(n); err != nil {
 		return
 	}
-	n.InspectionData = *r.data
 	return
 }
 
-func (r RedfishClient) setBMCAddress() (err error) {
-	m, err := r.service.Managers()
-	if err != nil && len(m) == 0 {
-		return fmt.Errorf("cannot set bmc address")
-	}
-	in, err := m[0].EthernetInterfaces()
-	if err != nil || len(in) == 0 {
-		return
-	}
-	addr, err := net.LookupAddr(in[0].IPv4Addresses[0].Address)
-	if err != nil || len(addr) == 0 {
-		return
-	}
-
-	if r.node.Host == addr[0] {
-		r.data.Inventory.BmcAddress = addr[0]
-		return
-	}
-
-	return fmt.Errorf("dns record %s does not map to ip: %s", addr[0], in[0].IPv4Addresses[0].Address)
-}
-
-func (r RedfishClient) setInventory() (err error) {
+func (r RedfishClient) setInventory(n *model.Node) (err error) {
 	ch, err := r.service.Chassis()
 	if err != nil || len(ch) == 0 {
 		return
 	}
 
-	r.data.Inventory.SystemVendor.Manufacturer = ch[0].Manufacturer
-	r.data.Inventory.SystemVendor.SerialNumber = ch[0].SerialNumber
+	n.InspectionData.Inventory.SystemVendor.Manufacturer = ch[0].Manufacturer
+	n.InspectionData.Inventory.SystemVendor.SerialNumber = ch[0].SerialNumber
 
 	// not performant string comparison due to toLower
 	if strings.Contains(strings.ToLower(ch[0].Manufacturer), "dell") {
-		r.data.Inventory.SystemVendor.SerialNumber = ch[0].SKU
+		n.InspectionData.Inventory.SystemVendor.SerialNumber = ch[0].SKU
 	}
-	r.data.Inventory.SystemVendor.ProductName = ch[0].Model
+	n.InspectionData.Inventory.SystemVendor.ProductName = ch[0].Model
 
 	s, err := r.service.Systems()
 	if err != nil || len(s) == 0 {
 		return
 	}
-	if err = r.setMemory(s[0]); err != nil {
+	if err = r.setMemory(s[0], n); err != nil {
 		return
 	}
-	if err = r.setDisks(s[0]); err != nil {
+	if err = r.setDisks(s[0], n); err != nil {
 		return
 	}
-	if err = r.setCPUs(s[0]); err != nil {
+	if err = r.setCPUs(s[0], n); err != nil {
 		return
 	}
-	if err = r.setNetworkDevicesData(ch[0]); err != nil {
+	if err = r.setNetworkDevicesData(ch[0], n); err != nil {
 		return
 	}
 	return
 }
 
-func (r RedfishClient) setMemory(s *redfish.ComputerSystem) (err error) {
+func (r RedfishClient) setMemory(s *redfish.ComputerSystem, n *model.Node) (err error) {
 	mem, err := s.Memory()
 	if err != nil {
 		return
 	}
-	r.data.Inventory.Memory.PhysicalMb = calcTotalMemory(mem)
+	n.InspectionData.Inventory.Memory.PhysicalMb = calcTotalMemory(mem)
 	return
 }
 
-func (r RedfishClient) setDisks(s *redfish.ComputerSystem) (err error) {
+func (r RedfishClient) setDisks(s *redfish.ComputerSystem, n *model.Node) (err error) {
 	st, err := s.Storage()
 	rootDisk := model.RootDisk{
 		Rotational: true,
 	}
-	r.data.Inventory.Disks = make([]model.Disk, 0)
+	n.InspectionData.Inventory.Disks = make([]model.Disk, 0)
+	re := regexp.MustCompile(`^(?i)(ssd|hdd)\s*(\d+)$`)
 	for _, s := range st {
 		ds, err := s.Drives()
 		if err != nil {
@@ -156,7 +127,9 @@ func (r RedfishClient) setDisks(s *redfish.ComputerSystem) (err error) {
 				Rotational: rotational,
 			}
 
-			if s.CapacityBytes > rootDisk.Size {
+			//"SSD 1" or "HDD 2"
+			match := re.FindStringSubmatch(s.Name)
+			if match != nil {
 				rootDisk.Size = int64(float64(s.CapacityBytes) * 1.074)
 				rootDisk.Name = s.Name
 				rootDisk.Model = s.Model
@@ -165,61 +138,73 @@ func (r RedfishClient) setDisks(s *redfish.ComputerSystem) (err error) {
 					rootDisk.Rotational = rotational
 				}
 			}
-			r.data.Inventory.Disks = append(r.data.Inventory.Disks, disk)
+
+			n.InspectionData.Inventory.Disks = append(n.InspectionData.Inventory.Disks, disk)
 		}
 	}
 
-	r.data.RootDisk = rootDisk
+	n.InspectionData.RootDisk = rootDisk
 	return
 }
-func (r RedfishClient) setCPUs(s *redfish.ComputerSystem) (err error) {
+func (r RedfishClient) setCPUs(s *redfish.ComputerSystem, n *model.Node) (err error) {
 	cpu, err := s.Processors()
 	if err != nil || len(cpu) == 0 {
 		return
 	}
-	r.data.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount / s.ProcessorSummary.Count
-	r.data.Inventory.CPU.Architecture = strings.Replace(string(cpu[0].InstructionSet), "-", "_", 1)
+	n.InspectionData.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount / s.ProcessorSummary.Count
+	n.InspectionData.Inventory.CPU.Architecture = strings.Replace(string(cpu[0].InstructionSet), "-", "_", 1)
 	return
 }
 
-func (r RedfishClient) setNetworkDevicesData(c *redfish.Chassis) (err error) {
+func (r RedfishClient) setNetworkDevicesData(c *redfish.Chassis, n *model.Node) (err error) {
 	intfs := make(map[string]model.NodeInterface, 0)
+	n.InspectionData.Inventory.Interfaces = make([]model.Interface, 0)
 	na, err := c.NetworkAdapters()
 	if err != nil {
 		return
 	}
 	for _, a := range na {
-		fmt.Println(a.Name, err)
 		slot := a.Controllers[0].Location.PartLocation.LocationOrdinalValue
-		np, err := a.NetworkPorts()
+		nps, err := a.NetworkPorts()
 		if err != nil {
 			return err
 		}
-		for _, n := range np {
-			mac := n.AssociatedNetworkAddresses[0]
-			id := mapInterfaceToNetbox(n.ID, slot)
-			if n.LinkStatus == redfish.UpPortLinkStatus && r.data.BootInterface == "" {
+		for _, np := range nps {
+			mac := np.AssociatedNetworkAddresses[0]
+			id := mapInterfaceToNetbox(np.ID, slot)
+			if np.LinkStatus == redfish.UpPortLinkStatus && n.InspectionData.BootInterface == "" {
 				mac, err = parseMac(mac, '-')
 				if err != nil {
 					return err
 				}
-				r.data.Inventory.Boot.PxeInterface = mac
-				r.data.BootInterface = "01-" + mac
+				n.InspectionData.Inventory.Boot.PxeInterface = mac
+				n.InspectionData.BootInterface = "01-" + strings.ToLower(mac)
 			}
 			mac, err = parseMac(mac, ':')
 			if err != nil {
 				return err
 			}
+			//add baremetal ports
+			if np.LinkStatus == redfish.UpPortLinkStatus {
+				n.InspectionData.Inventory.Interfaces = append(n.InspectionData.Inventory.Interfaces, model.Interface{
+					Name:       strings.ToLower(id),
+					MacAddress: strings.ToLower(mac),
+					Vendor:     &a.Manufacturer,
+					Product:    a.Model,
+					HasCarrier: true,
+				})
+			}
+
 			intfs[id] = model.NodeInterface{
 				Connection:     "",
 				ConnectionIP:   "",
 				Mac:            mac,
-				PortLinkStatus: n.LinkStatus,
+				PortLinkStatus: np.LinkStatus,
 			}
 		}
 	}
 	r.node.Interfaces = intfs
-	r.data.Inventory.Boot.CurrentBootMode = "bios"
+	n.InspectionData.Inventory.Boot.CurrentBootMode = "uefi"
 	return
 }
 

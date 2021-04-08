@@ -107,20 +107,20 @@ func (r *Scheduler) temper(node model.Node) {
 		r.erroHandler.Errors <- err
 		return
 	}
-	r.execTasks(t, node)
+	r.execTasks(t, &node)
 }
 
-func (r *Scheduler) execTasks(fns []func(n *model.Node) error, n model.Node) (err error) {
-	p, err := r.getProvisioner(n)
+func (r *Scheduler) execTasks(fns []func(n *model.Node) error, n *model.Node) (err error) {
+	p, err := r.getProvisioner(*n)
 	for _, fn := range fns {
-		if err = fn(&n); err != nil {
+		if err = fn(n); err != nil {
 			if _, ok := err.(*clients.NodeAlreadyExists); ok {
 				r.log.Infof("Node %s already exists, nothing to temper", p.Node.Name)
 				break
 			}
 			r.erroHandler.Errors <- &SchedulerError{
 				Err:  err.Error(),
-				Node: p.Node,
+				Node: n,
 			}
 			break
 		}
@@ -142,7 +142,7 @@ func (r *Scheduler) loadNodes() (nodes []model.Node, err error) {
 	if baremetal, err = c.ServiceEnabled("ironic"); err != nil {
 		r.log.Error(err)
 	}
-	baremetal = false
+
 	if r.cfg.NetboxNodesPath == "" {
 		var n *clients.NetboxClient
 		n, err = clients.NewNetboxClient(r.cfg, r.log)
@@ -196,9 +196,11 @@ func (r *Scheduler) getProvisioner(node model.Node) (p *Provisioner, err error) 
 }
 
 func (r *Scheduler) getTasks(n model.Node) (tasks []func(n *model.Node) error, err error) {
+
 	ctxLogger := log.WithFields(log.Fields{
 		"node": n.Name,
 	})
+
 	p, err := r.getProvisioner(n)
 	if err != nil {
 		return
@@ -208,6 +210,15 @@ func (r *Scheduler) getTasks(n model.Node) (tasks []func(n *model.Node) error, e
 		p.clientOpenstack.CreateDNSRecords,
 		p.clientRedfish.LoadInventory,
 		p.clientNetbox.LoadInterfaces,
+	)
+
+	d, err := diagnostics.GetDiagnosticTasks(n, *p.clientRedfish.ClientConfig, r.cfg, ctxLogger)
+	if err != nil {
+		return
+	}
+	tasks = append(tasks, d...)
+
+	tasks = append(tasks,
 		p.clientInspector.Create,
 		p.clientOpenstack.CheckCreated,
 		p.clientOpenstack.ApplyRules,
@@ -216,14 +227,7 @@ func (r *Scheduler) getTasks(n model.Node) (tasks []func(n *model.Node) error, e
 		p.clientOpenstack.Provide,
 		p.clientOpenstack.WaitForNovaPropagation,
 		p.clientOpenstack.DeployTestInstance,
-	)
 
-	d, err := diagnostics.GetDiagnosticTasks(n, *p.clientRedfish.ClientConfig, r.cfg, ctxLogger)
-	if err != nil {
-		return
-	}
-	tasks = append(tasks, d...)
-	tasks = append(tasks,
 		p.clientOpenstack.DeleteTestInstance,
 		p.clientOpenstack.Prepare,
 		p.clientNetbox.SetStatusStaged,

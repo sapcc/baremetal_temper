@@ -90,13 +90,8 @@ func (i InspectorClient) Create(in *model.Node) (err error) {
 		}
 		return fmt.Errorf(ierr.Error.Message)
 	}
-
 	if err = json.Unmarshal(bodyBytes, in); err != nil {
 		return
 	}
-	name := strings.Split(in.InspectionData.Inventory.BmcAddress, ".")
-	node := strings.Split(name[0], "-")
-	nodeName := strings.Replace(node[0], "r", "", 1)
-	in.Name = fmt.Sprintf("%s-%s", nodeName, node[1])
 	return
 }

@@ -68,6 +68,7 @@ type AwxAuth struct {
 type Deployment struct {
 	Image         string `yaml:"image"`
 	ConductorZone string `yaml:"conductor_zone"`
+	Flavor        string `yaml:"flavor"`
 }
 
 func GetConfig(opts Options) (cfg Config, err error) {

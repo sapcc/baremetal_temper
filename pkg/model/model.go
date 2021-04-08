@@ -47,6 +47,7 @@ type RootDisk struct {
 type Inventory struct {
 	BmcAddress   string       `json:"bmc_address"`
 	SystemVendor SystemVendor `json:"system_vendor"`
+	Interfaces   []Interface  `json:"interfaces"`
 	Boot         Boot         `json:"boot"`
 	Disks        []Disk       `json:"disks"`
 	Memory       Memory       `json:"memory"`

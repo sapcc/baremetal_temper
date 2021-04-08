@@ -9,7 +9,7 @@ import (
 
 type SchedulerError struct {
 	Err  string
-	Node model.Node
+	Node *model.Node
 }
 
 func (n *SchedulerError) Error() string {
@@ -38,14 +38,14 @@ func (e ErrorHandler) initHandler() {
 			if serr, ok := err.(*SchedulerError); ok {
 				log.Errorf("error tempering node %s. err: %s", serr.Node.Name, serr.Err)
 				if serr.Node.InstanceUUID != "" {
-					if err = e.p.clientOpenstack.DeleteTestInstance(&serr.Node); err != nil {
+					if err = e.p.clientOpenstack.DeleteTestInstance(serr.Node); err != nil {
 						log.Error("cannot delete compute instance %s. err: %s", serr.Node.InstanceUUID, err.Error())
 					}
 				}
-				if err = e.p.clientOpenstack.DeleteNode(&serr.Node); err != nil {
+				if err = e.p.clientOpenstack.DeleteNode(serr.Node); err != nil {
 					log.Errorf("cannot delete node %s. err: %s", serr.Node.Name, err.Error())
 				}
-				if err = e.p.clientNetbox.SetStatusFailed(&serr.Node, serr.Err); err != nil {
+				if err = e.p.clientNetbox.SetStatusFailed(serr.Node, serr.Err); err != nil {
 					log.Errorf("cannot set node %s status in netbox. err: %s", serr.Node.Name, err.Error())
 				}
 			} else {

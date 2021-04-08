@@ -109,6 +109,7 @@ func (n *NetboxClient) LoadIpamAddresses(i *model.Node) (err error) {
 				return err
 			}
 			i.RemoteIP = ip.String()
+			i.InspectionData.Inventory.BmcAddress = a.DNSName
 		}
 		if strings.Contains(a.DNSName, name) {
 			i.IpamAddresses = append(i.IpamAddresses, *a)
@@ -135,6 +136,7 @@ func (n *NetboxClient) SetStatusStaged(i *model.Node) error {
 
 //SetStatusFailed sets status to failed in netbox
 func (n *NetboxClient) SetStatusFailed(i *model.Node, comments string) (err error) {
+	comments = "temper failed: " + comments
 	p, err := n.updateNodeInfo(i.Name, models.WritableDeviceWithConfigContext{
 		Status:   models.DeviceWithConfigContextStatusValueFailed,
 		Comments: comments,

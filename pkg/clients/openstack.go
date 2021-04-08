@@ -87,7 +87,7 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 		}
 		bc.Microversion = version.Version
 	} else {
-		ctxLogger.Error("baremetal service error", err.Error())
+		ctxLogger.Infof("baremetal service error: %s", err.Error())
 	}
 
 	return &Client{baremetalClient: bc, dnsClient: dc, computeClient: cc, keystoneClient: ic, domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
@@ -138,10 +138,10 @@ func (c *Client) CheckCreated(n *model.Node) error {
 	if !n.Baremetal {
 		return nil
 	}
-	c.log.Debug("checking node creation")
-	if n.UUID != "" {
+	if n.UUID == "" {
 		return nil
 	}
+	c.log.Debug("checking node creation")
 	r, err := nodes.Get(c.baremetalClient, n.UUID).Extract()
 	if err != nil {
 		return &NodeNotFoundError{
@@ -416,10 +416,11 @@ func (c *Client) WaitForNovaPropagation(n *model.Node) (err error) {
 		}
 		hys, err := hypervisors.ExtractHypervisors(p)
 		if err != nil {
+			fmt.Println(err)
 			return false, err
 		}
 		for _, hv := range hys {
-			if hv.HypervisorHostname == n.UUID {
+			if hv.HypervisorHostname == n.UUID && hv.State == "up" {
 				if hv.LocalGB > 0 && hv.MemoryMB > 0 {
 					return true, nil
 				}
@@ -439,13 +440,14 @@ func (c *Client) DeployTestInstance(n *model.Node) (err error) {
 	c.log.Debug("creating test instance on node")
 	iID, err := c.getImageID(c.cfg.Deployment.Image)
 	zID, err := c.getConductorZone(c.cfg.Deployment.ConductorZone)
+	fID, err := c.getFlavorID(c.cfg.Deployment.Flavor)
 	if err != nil {
 		return
 	}
 
 	opts := servers.CreateOpts{
 		Name:             fmt.Sprintf("%s_inspector_test", time.Now().Format("2006-01-02T15:04:05")),
-		FlavorRef:        n.ResourceClass,
+		FlavorRef:        fID,
 		ImageRef:         iID,
 		AvailabilityZone: fmt.Sprintf("%s::%s", zID, n.UUID),
 	}
@@ -455,8 +457,18 @@ func (c *Client) DeployTestInstance(n *model.Node) (err error) {
 		return
 	}
 	n.InstanceUUID = s.ID
-
-	if err = servers.WaitForStatus(c.computeClient, s.ID, "ACTIVE", 60); err != nil {
+	c.log.Debugf("waiting test instance %s to be created", s.ID)
+	instError := true
+	if err := servers.WaitForStatus(c.computeClient, s.ID, "ERROR", 60); err != nil {
+		if err.Error() == "A timeout occurred" {
+			instError = false
+		}
+	}
+	if instError {
+		return fmt.Errorf("create test instance %s failed", n.InstanceUUID)
+	}
+	c.log.Debugf("waiting test instance %s to be active", s.ID)
+	if err = servers.WaitForStatus(c.computeClient, s.ID, "ACTIVE", 1200); err != nil {
 		return
 	}
 	n.InstanceIPv4 = s.AccessIPv4
@@ -464,7 +476,7 @@ func (c *Client) DeployTestInstance(n *model.Node) (err error) {
 	if err != nil {
 		return
 	}
-	pinger.Count = 3
+	pinger.Timeout = 1 * time.Minute
 	err = pinger.Run() // Blocks until finished.
 	if err != nil {
 		return
@@ -524,32 +536,28 @@ func (c *Client) getMatchingFlavorFor(n *model.Node) (name string, err error) {
 	err = flavors.ListDetail(c.computeClient, nil).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
-			return true, err
+			return false, err
 		}
-		ram := 0.1
+		mem := 0.1
 		disk := 0.2
 		cpu := 0.1
 		for _, f := range fs {
-			delta := calcDelta(f.RAM, n.InspectionData.Inventory.Memory.PhysicalMb)
-			if delta > ram {
-				continue
+			deltaMem := calcDelta(f.RAM, n.InspectionData.Inventory.Memory.PhysicalMb)
+			deltaDisk := calcDelta(f.Disk, int(n.InspectionData.RootDisk.Size/1024/1024/1024))
+			deltaCPU := calcDelta(f.VCPUs, n.InspectionData.Inventory.CPU.Count)
+			if deltaMem <= mem && deltaDisk <= disk && deltaCPU <= cpu {
+				mem = deltaMem
+				disk = deltaDisk
+				cpu = deltaCPU
+				name = f.Name
 			}
-			ram = delta
-			delta = calcDelta(f.Disk, int(n.InspectionData.RootDisk.Size))
-			if delta > disk {
-				continue
-			}
-			disk = delta
-			delta = calcDelta(f.VCPUs, n.InspectionData.Inventory.CPU.Count)
-			if delta > cpu {
-				continue
-			}
-			cpu = delta
-			name = f.Name
-			n.ResourceClass = f.Name
 		}
-		return false, nil
+		return true, nil
 	})
+
+	if name == "" {
+		return name, fmt.Errorf("no matching flavor found for node")
+	}
 	return
 }
 
