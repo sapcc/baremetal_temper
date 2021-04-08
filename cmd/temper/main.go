@@ -25,8 +25,9 @@ func init() {
 	flag.StringVar(&opts.ConfigFilePath, "CONFIG_FILE", "./etc/config.yaml", "Path to the config file")
 	flag.DurationVar(&opts.CheckInterval, "CHECK_INTERVAL", 10*time.Minute, "interval for the check")
 	flag.Var(&opts.LogLevelValue, "LOG_LEVEL", "log level")
+	flag.BoolVar(&opts.Baremetal, "BAREMETAL_TEMPER", false, "run baremetal temper tasks")
+	flag.BoolVar(&opts.Diagnostics, "DIAGNOSTICS_TEMPER", false, "run diagnostics temper tasks")
 	flag.Parse()
-
 	log.SetLevel(opts.LogLevelValue.LogLevel)
 
 	dsn := os.Getenv("SENTRY_DSN")
@@ -60,7 +61,7 @@ func main() {
 		log.Error(err)
 		os.Exit(0)
 	}
-	r, err := provision.NewScheduler(ctx, cfg)
+	r, err := provision.NewScheduler(ctx, cfg, opts)
 	if err != nil {
 		log.Error(err)
 		os.Exit(0)

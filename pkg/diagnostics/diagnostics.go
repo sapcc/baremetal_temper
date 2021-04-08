@@ -9,7 +9,7 @@ import (
 	"github.com/stmcginnis/gofish"
 )
 
-func GetDiagnosticTasks(n model.Node, gc gofish.ClientConfig, cfg config.Config, l *log.Entry) (d []func(n *model.Node) error, err error) {
+func GetTasks(n model.Node, gc gofish.ClientConfig, cfg config.Config, l *log.Entry) (d []func(n *model.Node) error, err error) {
 	d = make([]func(n *model.Node) error, 0)
 	c, err := gofish.Connect(gc)
 	if err != nil {

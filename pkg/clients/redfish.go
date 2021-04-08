@@ -151,7 +151,8 @@ func (r RedfishClient) setCPUs(s *redfish.ComputerSystem, n *model.Node) (err er
 	if err != nil || len(cpu) == 0 {
 		return
 	}
-	n.InspectionData.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount / s.ProcessorSummary.Count
+	//n.InspectionData.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount / s.ProcessorSummary.Count
+	n.InspectionData.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount / 2 // threads
 	n.InspectionData.Inventory.CPU.Architecture = strings.Replace(string(cpu[0].InstructionSet), "-", "_", 1)
 	return
 }

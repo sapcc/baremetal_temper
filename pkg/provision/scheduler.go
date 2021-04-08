@@ -24,6 +24,7 @@ type NetboxDiscovery struct {
 // Scheduler is ...
 type Scheduler struct {
 	cfg             config.Config
+	opts            config.Options
 	provisoners     map[string]*Provisioner
 	erroHandler     ErrorHandler
 	ctx             context.Context
@@ -33,7 +34,7 @@ type Scheduler struct {
 }
 
 // NewScheduler New Redfish Instance
-func NewScheduler(ctx context.Context, cfg config.Config) (s Scheduler, err error) {
+func NewScheduler(ctx context.Context, cfg config.Config, opts config.Options) (s Scheduler, err error) {
 	p, err := NewProvisioner(model.Node{}, cfg)
 	if err != nil {
 		return
@@ -53,6 +54,7 @@ func NewScheduler(ctx context.Context, cfg config.Config) (s Scheduler, err erro
 		ctx:             ctx,
 		nodesInProgress: make(map[string]struct{}),
 		log:             ctxLogger,
+		opts:            opts,
 	}
 	return
 }
@@ -134,14 +136,6 @@ func (r *Scheduler) execTasks(fns []func(n *model.Node) error, n *model.Node) (e
 
 func (r *Scheduler) loadNodes() (nodes []model.Node, err error) {
 	targets := make([]NetboxDiscovery, 0)
-	c, err := clients.NewClient(r.cfg, r.log)
-	if err != nil {
-		return
-	}
-	baremetal := false
-	if baremetal, err = c.ServiceEnabled("ironic"); err != nil {
-		r.log.Error(err)
-	}
 
 	if r.cfg.NetboxNodesPath == "" {
 		var n *clients.NetboxClient
@@ -157,8 +151,7 @@ func (r *Scheduler) loadNodes() (nodes []model.Node, err error) {
 
 		for _, n := range pNodes {
 			nodes = append(nodes, model.Node{
-				Name:      *n.Name,
-				Baremetal: baremetal,
+				Name: *n.Name,
 			})
 		}
 		return
@@ -173,8 +166,7 @@ func (r *Scheduler) loadNodes() (nodes []model.Node, err error) {
 
 	for _, t := range targets {
 		nodes = append(nodes, model.Node{
-			Name:      t.Labels["server_name"],
-			Baremetal: baremetal,
+			Name: t.Labels["server_name"],
 		})
 	}
 
@@ -211,27 +203,18 @@ func (r *Scheduler) getTasks(n model.Node) (tasks []func(n *model.Node) error, e
 		p.clientRedfish.LoadInventory,
 		p.clientNetbox.LoadInterfaces,
 	)
-
-	d, err := diagnostics.GetDiagnosticTasks(n, *p.clientRedfish.ClientConfig, r.cfg, ctxLogger)
-	if err != nil {
-		return
+	if r.opts.Baremetal {
+		if baremetal, err := p.clientOpenstack.ServiceEnabled("ironic"); err == nil && baremetal {
+			tasks = append(tasks, p.clientOpenstack.GetBaremetalTasks()...)
+		}
 	}
-	tasks = append(tasks, d...)
+	if r.opts.Diagnostics {
+		d, err := diagnostics.GetTasks(n, *p.clientRedfish.ClientConfig, r.cfg, ctxLogger)
+		if err != nil {
+			return d, err
+		}
+		tasks = append(tasks, d...)
+	}
 
-	tasks = append(tasks,
-		p.clientInspector.Create,
-		p.clientOpenstack.CheckCreated,
-		p.clientOpenstack.ApplyRules,
-		p.clientOpenstack.Validate,
-		p.clientOpenstack.PowerOn,
-		p.clientOpenstack.Provide,
-		p.clientOpenstack.WaitForNovaPropagation,
-		p.clientOpenstack.DeployTestInstance,
-
-		p.clientOpenstack.DeleteTestInstance,
-		p.clientOpenstack.Prepare,
-		p.clientNetbox.SetStatusStaged,
-		p.clientNetbox.Update,
-	)
 	return
 }

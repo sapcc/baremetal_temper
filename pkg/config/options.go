@@ -9,6 +9,8 @@ import (
 // Options passed via cmd line
 type Options struct {
 	LogLevelValue  LogLevelValue
+	Baremetal      bool
+	Diagnostics    bool
 	Version        string
 	ConfigFilePath string
 	RulesFilePath  string

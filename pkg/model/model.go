@@ -14,7 +14,6 @@ type Node struct {
 	InstanceIPv4   string
 	Host           string
 	ResourceClass  string
-	Baremetal      bool
 	InspectionData InspectonData
 	Interfaces     map[string]NodeInterface
 	IpamAddresses  []models.IPAddress
