@@ -29,8 +29,9 @@ type Inspector struct {
 }
 
 type Redfish struct {
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
+	User      string `yaml:"user"`
+	Password  string `yaml:"password"`
+	BootImage string `yaml:"boot_image"`
 }
 
 type OpenstackAuth struct {
@@ -66,9 +67,11 @@ type AwxAuth struct {
 }
 
 type Deployment struct {
-	Image         string `yaml:"image"`
-	ConductorZone string `yaml:"conductor_zone"`
-	Flavor        string `yaml:"flavor"`
+	Image         string        `yaml:"image"`
+	ConductorZone string        `yaml:"conductor_zone"`
+	Flavor        string        `yaml:"flavor"`
+	Network       string        `yaml:"network"`
+	OpenstackAuth OpenstackAuth `yaml:"os_auth"`
 }
 
 func GetConfig(opts Options) (cfg Config, err error) {

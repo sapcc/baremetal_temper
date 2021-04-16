@@ -3,7 +3,9 @@ package provision
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
+	"net/http"
 	"sync"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sapcc/baremetal_temper/pkg/diagnostics"
 	"github.com/sapcc/baremetal_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/server"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -30,6 +33,7 @@ type Scheduler struct {
 	ctx             context.Context
 	nodesInProgress map[string]struct{}
 	log             *log.Entry
+	server          *server.Handler
 	sync.RWMutex
 }
 
@@ -63,6 +67,13 @@ func NewScheduler(ctx context.Context, cfg config.Config, opts config.Options) (
 func (r *Scheduler) Start(d time.Duration) {
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
+
+	if r.opts.RedfishEvents {
+		mux := http.NewServeMux()
+		r.server = server.New()
+		go http.ListenAndServe(":8080", mux)
+		go r.eventLoop()
+	}
 
 loop:
 	for {
@@ -99,6 +110,7 @@ func (r *Scheduler) temper(node model.Node) {
 	}
 	r.nodesInProgress[node.Name] = struct{}{}
 	r.Unlock()
+	r.server.RegisterEventRoute(&node)
 	if err = p.clientNetbox.LoadIpamAddresses(&node); err != nil {
 		r.erroHandler.Errors <- err
 		return
@@ -202,12 +214,8 @@ func (r *Scheduler) getTasks(n model.Node) (tasks []func(n *model.Node) error, e
 		p.clientOpenstack.CreateDNSRecords,
 		p.clientRedfish.LoadInventory,
 		p.clientNetbox.LoadInterfaces,
+		p.clientRedfish.BootImage,
 	)
-	if r.opts.Baremetal {
-		if baremetal, err := p.clientOpenstack.ServiceEnabled("ironic"); err == nil && baremetal {
-			tasks = append(tasks, p.clientOpenstack.GetBaremetalTasks()...)
-		}
-	}
 	if r.opts.Diagnostics {
 		d, err := diagnostics.GetTasks(n, *p.clientRedfish.ClientConfig, r.cfg, ctxLogger)
 		if err != nil {
@@ -215,6 +223,22 @@ func (r *Scheduler) getTasks(n model.Node) (tasks []func(n *model.Node) error, e
 		}
 		tasks = append(tasks, d...)
 	}
+	if r.opts.Baremetal {
+		if baremetal, err := p.clientOpenstack.ServiceEnabled("ironic"); err == nil && baremetal {
+			tasks = append(tasks, p.clientOpenstack.GetBaremetalTasks()...)
+		}
+	}
 
 	return
+}
+
+func (r *Scheduler) eventLoop() {
+	for {
+		select {
+		case e := <-r.server.Events:
+			fmt.Println(e.Name)
+		case <-r.ctx.Done():
+			return
+		}
+	}
 }

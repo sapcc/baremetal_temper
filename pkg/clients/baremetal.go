@@ -243,11 +243,19 @@ func (c *Client) DeployTestInstance(n *model.Node) (err error) {
 		return
 	}
 
+	net, err := c.getNetwork(c.cfg.Deployment.Network)
+	if err != nil {
+		return
+	}
+	nets := make([]servers.Network, 1)
+	nets = append(nets, net)
+
 	opts := servers.CreateOpts{
 		Name:             fmt.Sprintf("%s_inspector_test", time.Now().Format("2006-01-02T15:04:05")),
 		FlavorRef:        fID,
 		ImageRef:         iID,
 		AvailabilityZone: fmt.Sprintf("%s::%s", zID, n.UUID),
+		Networks:         nets,
 	}
 	r := servers.Create(c.computeClient, opts)
 	s, err := r.Extract()
@@ -330,6 +338,11 @@ func (c *Client) Provide(n *model.Node) (err error) {
 	})
 
 	return wait.Poll(5*time.Second, 30*time.Second, cfp)
+}
+
+func (c *Client) CreatePortGroup(n *model.Node) (err error) {
+	//TODO: create port group
+	return
 }
 
 //Prepare prepares the node for customers.

@@ -27,6 +27,7 @@ func init() {
 	flag.Var(&opts.LogLevelValue, "LOG_LEVEL", "log level")
 	flag.BoolVar(&opts.Baremetal, "BAREMETAL_TEMPER", false, "run baremetal temper tasks")
 	flag.BoolVar(&opts.Diagnostics, "DIAGNOSTICS_TEMPER", false, "run diagnostics temper tasks")
+	flag.BoolVar(&opts.RedfishEvents, "SUBSCRIPE_REDFISH_EVENTS", false, "subscripe to redfish node events")
 	flag.Parse()
 	log.SetLevel(opts.LogLevelValue.LogLevel)
 

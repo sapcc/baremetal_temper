@@ -19,6 +19,7 @@ type RedfishClient struct {
 	service      *gofish.Service
 	node         *model.Node
 	log          *log.Entry
+	cfg          config.Redfish
 }
 
 //NewRedfishClient creates redfish client
@@ -31,6 +32,7 @@ func NewRedfishClient(cfg config.Config, ctxLogger *log.Entry) *RedfishClient {
 			Insecure:  true,
 			BasicAuth: false,
 		},
+		cfg: cfg.Redfish,
 		log: ctxLogger,
 	}
 }
@@ -38,6 +40,75 @@ func NewRedfishClient(cfg config.Config, ctxLogger *log.Entry) *RedfishClient {
 //SetEndpoint sets the redfish api endpoint
 func (r RedfishClient) SetEndpoint(n *model.Node) (err error) {
 	r.ClientConfig.Endpoint = fmt.Sprintf("https://%s", n.RemoteIP)
+	return
+}
+
+func (r RedfishClient) BootImage(n *model.Node) (err error) {
+	bootOverride := redfish.Boot{
+		BootSourceOverrideTarget:  redfish.CdBootSourceOverrideTarget,
+		BootSourceOverrideEnabled: redfish.OnceBootSourceOverrideEnabled,
+	}
+	if err = r.insertMedia(r.cfg.BootImage); err != nil {
+		return
+	}
+	return r.reboot(bootOverride)
+}
+
+func (r RedfishClient) insertMedia(image string) (err error) {
+	m, err := r.client.Service.Managers()
+	vm, err := m[0].VirtualMedia()
+	fmt.Println(vm[0].Name)
+	return vm[0].InsertMedia(image, true, false)
+}
+
+func (r RedfishClient) CreateEventSubscription(n *model.Node) (err error) {
+	es, err := r.client.Service.EventService()
+	if err != nil {
+		return
+	}
+	_, err = es.CreateEventSubscription(
+		"https://baremetal_temper/events/"+n.Name,
+		[]redfish.EventType{redfish.SupportedEventTypes["Alert"], redfish.SupportedEventTypes["StatusChange"]},
+		nil,
+		redfish.RedfishEventDestinationProtocol,
+		"Public",
+		nil,
+	)
+	return
+}
+
+func (r RedfishClient) DeleteEventSubscription(n *model.Node) (err error) {
+	es, err := r.client.Service.EventService()
+	if err != nil {
+		return
+	}
+	return es.DeleteEventSubscription("https://baremetal_temper/events/" + n.Name)
+}
+
+func (r RedfishClient) reboot(boot redfish.Boot) (err error) {
+	bootOverride := redfish.Boot{
+		BootSourceOverrideTarget:  redfish.CdBootSourceOverrideTarget,
+		BootSourceOverrideEnabled: redfish.OnceBootSourceOverrideEnabled,
+	}
+
+	service := r.client.Service
+
+	ss, err := service.Systems()
+	if err != nil {
+		return
+	}
+
+	for _, system := range ss {
+		fmt.Printf("System: %#v\n\n", system)
+		err = system.SetBoot(bootOverride)
+		if err != nil {
+			return
+		}
+		err = system.Reset(redfish.ForceRestartResetType)
+		if err != nil {
+			return
+		}
+	}
 	return
 }
 
@@ -151,7 +222,6 @@ func (r RedfishClient) setCPUs(s *redfish.ComputerSystem, n *model.Node) (err er
 	if err != nil || len(cpu) == 0 {
 		return
 	}
-	//n.InspectionData.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount / s.ProcessorSummary.Count
 	n.InspectionData.Inventory.CPU.Count = s.ProcessorSummary.LogicalProcessorCount / 2 // threads
 	n.InspectionData.Inventory.CPU.Architecture = strings.Replace(string(cpu[0].InstructionSet), "-", "_", 1)
 	return
@@ -173,20 +243,14 @@ func (r RedfishClient) setNetworkDevicesData(c *redfish.Chassis, n *model.Node) 
 		for _, np := range nps {
 			mac := np.AssociatedNetworkAddresses[0]
 			id := mapInterfaceToNetbox(np.ID, slot)
-			if np.LinkStatus == redfish.UpPortLinkStatus && n.InspectionData.BootInterface == "" {
-				mac, err = parseMac(mac, '-')
-				if err != nil {
-					return err
-				}
-				n.InspectionData.Inventory.Boot.PxeInterface = mac
-				n.InspectionData.BootInterface = "01-" + strings.ToLower(mac)
-			}
 			mac, err = parseMac(mac, ':')
 			if err != nil {
-				return err
+				log.Errorf("no mac address for port id: %s, name: %s. ignoring it", id, np.Name)
+				continue
 			}
-			//add baremetal ports
-			if np.LinkStatus == redfish.UpPortLinkStatus {
+			r.addBootInterface(id, np, n)
+			//add baremetal ports (only link up and no integrated ports)
+			if np.LinkStatus == redfish.UpPortLinkStatus && strings.Contains(id, "PCI") {
 				n.InspectionData.Inventory.Interfaces = append(n.InspectionData.Inventory.Interfaces, model.Interface{
 					Name:       strings.ToLower(id),
 					MacAddress: strings.ToLower(mac),
@@ -197,8 +261,6 @@ func (r RedfishClient) setNetworkDevicesData(c *redfish.Chassis, n *model.Node) 
 			}
 
 			intfs[id] = model.NodeInterface{
-				Connection:     "",
-				ConnectionIP:   "",
 				Mac:            mac,
 				PortLinkStatus: np.LinkStatus,
 			}
@@ -207,6 +269,19 @@ func (r RedfishClient) setNetworkDevicesData(c *redfish.Chassis, n *model.Node) 
 	r.node.Interfaces = intfs
 	n.InspectionData.Inventory.Boot.CurrentBootMode = "uefi"
 	return
+}
+
+func (r RedfishClient) addBootInterface(id string, np *redfish.NetworkPort, n *model.Node) {
+	mac := np.AssociatedNetworkAddresses[0]
+	if np.LinkStatus == redfish.UpPortLinkStatus && n.InspectionData.BootInterface == "" {
+		mac, err := parseMac(mac, '-')
+		if err != nil {
+			log.Errorf("no mac address for port id: %s, name: %s", id, np.Name)
+		} else {
+			n.InspectionData.Inventory.Boot.PxeInterface = mac
+			n.InspectionData.BootInterface = "01-" + strings.ToLower(mac)
+		}
+	}
 }
 
 func parseMac(s string, sep rune) (string, error) {

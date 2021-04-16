@@ -11,6 +11,7 @@ type Options struct {
 	LogLevelValue  LogLevelValue
 	Baremetal      bool
 	Diagnostics    bool
+	RedfishEvents  bool
 	Version        string
 	ConfigFilePath string
 	RulesFilePath  string

@@ -14,12 +14,15 @@ import (
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/apiversions"
+	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/services"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/images"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/recordsets"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
 	iDservices "github.com/gophercloud/gophercloud/openstack/identity/v3/services"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/pagination"
 	log "github.com/sirupsen/logrus"
 )
@@ -30,6 +33,7 @@ type Client struct {
 	dnsClient       *gophercloud.ServiceClient
 	computeClient   *gophercloud.ServiceClient
 	keystoneClient  *gophercloud.ServiceClient
+	networkClient   *gophercloud.ServiceClient
 	domain          string
 	log             *log.Entry
 	cfg             config.Config
@@ -69,6 +73,12 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	nc, err := openstack.NewNetworkV2(provider, gophercloud.EndpointOpts{
+		Region: cfg.Region,
+	})
+
+	newProviderClient(cfg.Deployment.OpenstackAuth)
 	bc, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
 		Region: cfg.Region,
 	})
@@ -82,7 +92,7 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) (*Client, error) {
 		ctxLogger.Infof("baremetal service error: %s", err.Error())
 	}
 
-	return &Client{baremetalClient: bc, dnsClient: dc, computeClient: cc, keystoneClient: ic, domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
+	return &Client{networkClient: nc, baremetalClient: bc, dnsClient: dc, computeClient: cc, keystoneClient: ic, domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
 }
 
 func newProviderClient(i config.OpenstackAuth) (pc *gophercloud.ProviderClient, err error) {
@@ -269,14 +279,15 @@ func (c *Client) getFlavorID(name string) (id string, err error) {
 }
 
 func (c *Client) getMatchingFlavorFor(n *model.Node) (name string, err error) {
+	mem := 0.1
+	disk := 0.2
+	cpu := 0.1
+	var fl flavors.Flavor
 	err = flavors.ListDetail(c.computeClient, nil).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
 			return false, err
 		}
-		mem := 0.1
-		disk := 0.2
-		cpu := 0.1
 		for _, f := range fs {
 			deltaMem := calcDelta(f.RAM, n.InspectionData.Inventory.Memory.PhysicalMb)
 			deltaDisk := calcDelta(f.Disk, int(n.InspectionData.RootDisk.Size/1024/1024/1024))
@@ -286,14 +297,33 @@ func (c *Client) getMatchingFlavorFor(n *model.Node) (name string, err error) {
 				disk = deltaDisk
 				cpu = deltaCPU
 				name = f.Name
+				fl = f
 			}
 		}
 		return true, nil
 	})
-
 	if name == "" {
 		return name, fmt.Errorf("no matching flavor found for node")
 	}
+	n.InspectionData.Inventory.Memory.PhysicalMb = fl.RAM
+	n.InspectionData.RootDisk.Size = int64(fl.Disk)
+	n.InspectionData.Inventory.CPU.Count = fl.VCPUs
+	updateNode := nodes.UpdateOpts{}
+	updateNode = append(updateNode, nodes.UpdateOperation{
+		Op:    nodes.ReplaceOp,
+		Path:  "/properties/memory_mb",
+		Value: fl.RAM,
+	})
+	updateNode = append(updateNode, nodes.UpdateOperation{
+		Op:    nodes.ReplaceOp,
+		Path:  "/properties/local_gb",
+		Value: fl.Disk,
+	})
+	updateNode = append(updateNode, nodes.UpdateOperation{
+		Op:    nodes.ReplaceOp,
+		Path:  "/properties/cpus",
+		Value: fl.VCPUs,
+	})
 	return
 }
 
@@ -337,5 +367,18 @@ func (c *Client) getRules(n *model.Node) (r config.Rule, err error) {
 	}
 	json.Unmarshal(out.Bytes(), &r)
 
+	return
+}
+
+func (c *Client) getNetwork(name string) (n servers.Network, err error) {
+	p, err := networks.List(c.networkClient, networks.ListOpts{Name: name}).AllPages()
+	if err != nil {
+		return
+	}
+	ns, err := networks.ExtractNetworks(p)
+	if err != nil || len(ns) != 1 {
+		return
+	}
+	n.UUID = ns[0].ID
 	return
 }
