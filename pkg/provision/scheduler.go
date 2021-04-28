@@ -110,7 +110,9 @@ func (r *Scheduler) temper(node model.Node) {
 	}
 	r.nodesInProgress[node.Name] = struct{}{}
 	r.Unlock()
-	r.server.RegisterEventRoute(&node)
+	if r.opts.RedfishEvents {
+		r.server.RegisterEventRoute(&node)
+	}
 	if err = p.clientNetbox.LoadIpamAddresses(&node); err != nil {
 		r.erroHandler.Errors <- err
 		return
