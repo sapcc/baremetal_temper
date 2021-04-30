@@ -18,7 +18,7 @@ type AristaClient struct {
 
 func (a AristaClient) Run(n *model.Node) (err error) {
 	foundAllNeighbors := true
-	cfg := a.cfg.AristaAuth
+	cfg := a.cfg.Arista
 	for _, i := range n.Interfaces {
 		if !strings.Contains(i.Connection, "asw") {
 			continue

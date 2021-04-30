@@ -16,7 +16,6 @@ import (
 type RedfishClient struct {
 	ClientConfig *gofish.ClientConfig
 	client       *gofish.APIClient
-	service      *gofish.Service
 	node         *model.Node
 	log          *log.Entry
 	cfg          config.Redfish
@@ -30,7 +29,7 @@ func NewRedfishClient(cfg config.Config, ctxLogger *log.Entry) *RedfishClient {
 			Username:  cfg.Redfish.User,
 			Password:  cfg.Redfish.Password,
 			Insecure:  true,
-			BasicAuth: false,
+			BasicAuth: true,
 		},
 		cfg: cfg.Redfish,
 		log: ctxLogger,
@@ -38,17 +37,32 @@ func NewRedfishClient(cfg config.Config, ctxLogger *log.Entry) *RedfishClient {
 }
 
 //SetEndpoint sets the redfish api endpoint
-func (r RedfishClient) SetEndpoint(n *model.Node) (err error) {
+func (r *RedfishClient) SetEndpoint(n *model.Node) (err error) {
 	r.ClientConfig.Endpoint = fmt.Sprintf("https://%s", n.RemoteIP)
 	return
 }
 
-func (r RedfishClient) BootImage(n *model.Node) (err error) {
+func (r *RedfishClient) GetRedfishTasks() (d []func(n *model.Node) error) {
+	d = make([]func(n *model.Node) error, 0)
+	d = append(d) //r.CreateEventSubscription,
+	//r.BootImage,
+
+	return
+}
+
+func (r *RedfishClient) BootImage(n *model.Node) (err error) {
+	if r.cfg.BootImage == nil {
+		return
+	}
+	if err = r.connect(); err != nil {
+		return
+	}
+	defer r.client.Logout()
 	bootOverride := redfish.Boot{
 		BootSourceOverrideTarget:  redfish.CdBootSourceOverrideTarget,
 		BootSourceOverrideEnabled: redfish.OnceBootSourceOverrideEnabled,
 	}
-	if err = r.insertMedia(r.cfg.BootImage); err != nil {
+	if err = r.insertMedia(*r.cfg.BootImage); err != nil {
 		return
 	}
 	return r.reboot(bootOverride)
@@ -56,9 +70,30 @@ func (r RedfishClient) BootImage(n *model.Node) (err error) {
 
 func (r RedfishClient) insertMedia(image string) (err error) {
 	m, err := r.client.Service.Managers()
-	vm, err := m[0].VirtualMedia()
-	fmt.Println(vm[0].Name)
-	return vm[0].InsertMedia(image, true, false)
+	if err != nil {
+		return
+	}
+
+	vms, err := m[0].VirtualMedia()
+	if err != nil {
+		return
+	}
+	var vm *redfish.VirtualMedia
+	for _, v := range vms {
+		for _, ty := range v.MediaTypes {
+			if ty == redfish.CDMediaType || ty == redfish.DVDMediaType {
+				vm = v
+			}
+		}
+	}
+	if vm.SupportsMediaInsert {
+		if vm.Image != "" {
+			err = vm.EjectMedia()
+		}
+		err = vm.InsertMedia(image, false, false)
+	}
+
+	return
 }
 
 func (r RedfishClient) CreateEventSubscription(n *model.Node) (err error) {
@@ -80,12 +115,24 @@ func (r RedfishClient) CreateEventSubscription(n *model.Node) (err error) {
 func (r RedfishClient) DeleteEventSubscription(n *model.Node) (err error) {
 	es, err := r.client.Service.EventService()
 	if err != nil {
-		return
+		r.log.Error(err)
+		return nil
 	}
-	return es.DeleteEventSubscription("https://baremetal_temper/events/" + n.Name)
+	if err := es.DeleteEventSubscription("https://baremetal_temper/events/" + n.Name); err != nil {
+		r.log.Error(err)
+	}
+	return nil
 }
 
 func (r RedfishClient) reboot(boot redfish.Boot) (err error) {
+	type shareParameters struct {
+		Target string
+	}
+	type temp struct {
+		ShareParameters shareParameters
+		ImportBuffer    string
+	}
+
 	bootOverride := redfish.Boot{
 		BootSourceOverrideTarget:  redfish.CdBootSourceOverrideTarget,
 		BootSourceOverrideEnabled: redfish.OnceBootSourceOverrideEnabled,
@@ -93,44 +140,58 @@ func (r RedfishClient) reboot(boot redfish.Boot) (err error) {
 
 	service := r.client.Service
 
-	ss, err := service.Systems()
+	sys, err := service.Systems()
+	if err != nil {
+		return
+	}
+	var dellRe = regexp.MustCompile(`R640|R740|R840`)
+	if dellRe.MatchString(sys[0].Model) {
+		m, err := service.Managers()
+		if err != nil {
+			return err
+		}
+		t := temp{
+			ShareParameters: shareParameters{Target: "ALL"},
+			ImportBuffer:    "<SystemConfiguration><Component FQDD=\"iDRAC.Embedded.1\"><Attribute Name=\"ServerBoot.1#BootOnce\">Enabled</Attribute><Attribute Name=\"ServerBoot.1#FirstBootDevice\">VCD-DVD</Attribute></Component></SystemConfiguration>",
+		}
+		resp, err := m[0].Client.Post("/redfish/v1/Managers/iDRAC.Embedded.1/Actions/Oem/EID_674_Manager.ImportSystemConfiguration", t)
+		fmt.Println(resp, err)
+	} else {
+		err = sys[0].SetBoot(bootOverride)
+		if err != nil {
+			return
+		}
+	}
+	if sys[0].PowerState != redfish.OnPowerState {
+		err = sys[0].Reset(redfish.OnResetType)
+	} else {
+		err = sys[0].Reset(redfish.ForceRestartResetType)
+	}
 	if err != nil {
 		return
 	}
 
-	for _, system := range ss {
-		fmt.Printf("System: %#v\n\n", system)
-		err = system.SetBoot(bootOverride)
-		if err != nil {
-			return
-		}
-		err = system.Reset(redfish.ForceRestartResetType)
-		if err != nil {
-			return
-		}
-	}
 	return
 }
 
-//LoadInventory loads the node's inventory via it's redfish api
-func (r RedfishClient) LoadInventory(n *model.Node) (err error) {
-	r.log.Debug("calling redfish api to load node info")
+func (r *RedfishClient) connect() (err error) {
 	client, err := gofish.Connect(*r.ClientConfig)
 	if err != nil {
 		return
 	}
-	r.node = n
-	defer client.Logout()
 	r.client = client
-	r.service = client.Service
-	if err = r.setInventory(n); err != nil {
-		return
-	}
 	return
 }
 
-func (r RedfishClient) setInventory(n *model.Node) (err error) {
-	ch, err := r.service.Chassis()
+//LoadInventory loads the node's inventory via it's redfish api
+func (r *RedfishClient) LoadInventory(n *model.Node) (err error) {
+	r.log.Debug("calling redfish api to load node info")
+	if err = r.connect(); err != nil {
+		return
+	}
+	r.node = n
+	defer r.client.Logout()
+	ch, err := r.client.Service.Chassis()
 	if err != nil || len(ch) == 0 {
 		return
 	}
@@ -144,7 +205,7 @@ func (r RedfishClient) setInventory(n *model.Node) (err error) {
 	}
 	n.InspectionData.Inventory.SystemVendor.ProductName = ch[0].Model
 
-	s, err := r.service.Systems()
+	s, err := r.client.Service.Systems()
 	if err != nil || len(s) == 0 {
 		return
 	}
@@ -234,6 +295,7 @@ func (r RedfishClient) setNetworkDevicesData(c *redfish.Chassis, n *model.Node) 
 	if err != nil {
 		return
 	}
+
 	for _, a := range na {
 		slot := a.Controllers[0].Location.PartLocation.LocationOrdinalValue
 		nps, err := a.NetworkPorts()

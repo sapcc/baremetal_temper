@@ -8,17 +8,17 @@ import (
 )
 
 type Config struct {
-	OpenstackAuth   OpenstackAuth `yaml:"os_auth"`
+	Openstack       OpenstackAuth `yaml:"openstack"`
 	Inspector       Inspector     `yaml:"inspector"`
-	Redfish         Redfish       `yaml:"redfish"`
-	NetboxAuth      NetboxAuth    `yaml:"netbox_auth"`
-	AristaAuth      AristaAuth    `yaml:"arista_auth"`
-	AciAuth         AciAuth       `yaml:"aci_auth"`
-	AwxAuth         AwxAuth       `yaml:"awx_auth"`
-	NetboxNodesPath string        `yaml:"netbox_nodes_path"`
-	RulesPath       string        `yaml:"rules_path"`
+	Redfish         Redfish       `yaml:"wathever"`
+	Netbox          NetboxAuth    `yaml:"netbox"`
+	Arista          AristaAuth    `yaml:"arista"`
+	AciAuth         AciAuth       `yaml:"aciAuth"`
+	AwxAuth         AwxAuth       `yaml:"awxAuth"`
+	NetboxNodesPath string        `yaml:"netboxNodesPath"`
+	RulesPath       string        `yaml:"rulesPath"`
 	Region          string        `yaml:"region"`
-	NetboxQuery     *string       `yaml:"netbox_query"`
+	NetboxQuery     *string       `yaml:"netboxQuery"`
 	Domain          string        `yaml:"domain"`
 	NameSpace       string        `yaml:"namespace"`
 	Deployment      Deployment    `yaml:"deployment"`
@@ -29,18 +29,18 @@ type Inspector struct {
 }
 
 type Redfish struct {
-	User      string `yaml:"user"`
-	Password  string `yaml:"password"`
-	BootImage string `yaml:"boot_image"`
+	User      string  `yaml:"user"`
+	Password  string  `yaml:"password"`
+	BootImage *string `yaml:"bootImage"`
 }
 
 type OpenstackAuth struct {
 	User              string `yaml:"user"`
 	Password          string `yaml:"password"`
-	AuthURL           string `yaml:"auth_url"`
-	DomainName        string `yaml:"user_domain_name"`
-	ProjectName       string `yaml:"project_name"`
-	ProjectDomainName string `yaml:"domain_name"`
+	Url               string `yaml:"url"`
+	DomainName        string `yaml:"domainName"`
+	ProjectName       string `yaml:"projectName"`
+	ProjectDomainName string `yaml:"projectDomainName"`
 }
 
 type NetboxAuth struct {
@@ -68,10 +68,10 @@ type AwxAuth struct {
 
 type Deployment struct {
 	Image         string        `yaml:"image"`
-	ConductorZone string        `yaml:"conductor_zone"`
+	ConductorZone string        `yaml:"conductorZone"`
 	Flavor        string        `yaml:"flavor"`
 	Network       string        `yaml:"network"`
-	OpenstackAuth OpenstackAuth `yaml:"os_auth"`
+	OpenstackAuth OpenstackAuth `yaml:"osAuth"`
 }
 
 func GetConfig(opts Options) (cfg Config, err error) {

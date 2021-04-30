@@ -94,6 +94,7 @@ func (a ACIClient) Run(n *model.Node) (err error) {
 				if prepareMac(i.Mac) == prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV) {
 					if l.LldpIf.LldpIfAttributes.ID != i.Port {
 						errMsg := fmt.Sprintf("%s<wrong switch port: %s>", iName, l.LldpIf.LldpIfAttributes.ID)
+						a.log.Debugf("%s<wrong switch port: %s>", iName, l.LldpIf.LldpIfAttributes.ID)
 						noLldp = append(noLldp, errMsg)
 						break aciPortLoop
 					}
@@ -104,7 +105,7 @@ func (a ACIClient) Run(n *model.Node) (err error) {
 			}
 		}
 		if !foundNeighbor {
-			noLldp = append(noLldp, iName+"<lldp_missing>")
+			noLldp = append(noLldp, iName+"(lldp_missing)")
 		}
 	}
 

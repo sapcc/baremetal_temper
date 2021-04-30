@@ -11,8 +11,12 @@ require (
 	github.com/go-openapi/runtime v0.19.21
 	github.com/go-ping/ping v0.0.0-20201115131931-3300c582a663
 	github.com/gophercloud/gophercloud v0.14.0
+	github.com/gorilla/mux v1.8.0
+	github.com/mitchellh/go-homedir v1.1.0
 	github.com/netbox-community/go-netbox v0.0.0-20200923200002-49832662a6fd
 	github.com/sirupsen/logrus v1.7.0
+	github.com/spf13/cobra v0.0.3
+	github.com/spf13/viper v1.7.1
 	github.com/stmcginnis/gofish v0.7.0
 	github.com/vaughan0/go-ini v0.0.0-20130923145212-a98ad7ee00ec // indirect
 	gopkg.in/yaml.v2 v2.3.0
@@ -21,3 +25,5 @@ require (
 )
 
 replace github.com/netbox-community/go-netbox => github.com/stefanhipfel/go-netbox v0.0.0-20200928114340-fcd4119414a4
+
+replace github.com/stmcginnis/gofish => github.com/stefanhipfel/gofish v0.9.1-0.20210423073907-81e338649907

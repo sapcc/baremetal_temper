@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-ping/ping"
 	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/ports"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors"
@@ -41,7 +42,7 @@ type ErrorMessage struct {
 	Message string `json:"message"`
 }
 
-func (c *Client) GetBaremetalTasks() (d []func(n *model.Node) error) {
+func (c *OpenstackClient) GetBaremetalTasks() (d []func(n *model.Node) error) {
 	d = make([]func(n *model.Node) error, 0)
 	d = append(d,
 		c.Create,
@@ -60,7 +61,7 @@ func (c *Client) GetBaremetalTasks() (d []func(n *model.Node) error) {
 }
 
 //Create creates a new ironic node based on the provided ironic model
-func (c *Client) Create(in *model.Node) (err error) {
+func (c *OpenstackClient) Create(in *model.Node) (err error) {
 	c.log.Debug("calling inspector api for node creation")
 	client := &http.Client{}
 	u, err := url.Parse(fmt.Sprintf("http://%s", c.cfg.Inspector.Host))
@@ -105,7 +106,7 @@ func (c *Client) Create(in *model.Node) (err error) {
 }
 
 //CheckCreated checks if node was created
-func (c *Client) CheckCreated(n *model.Node) error {
+func (c *OpenstackClient) CheckCreated(n *model.Node) error {
 	if n.UUID == "" {
 		return nil
 	}
@@ -121,7 +122,7 @@ func (c *Client) CheckCreated(n *model.Node) error {
 }
 
 //PowerOn powers on the node
-func (c *Client) PowerOn(n *model.Node) (err error) {
+func (c *OpenstackClient) PowerOn(n *model.Node) (err error) {
 	c.log.Debug("powering on node")
 	powerStateOpts := nodes.PowerStateOpts{
 		Target: nodes.PowerOn,
@@ -152,7 +153,7 @@ func (c *Client) PowerOn(n *model.Node) (err error) {
 }
 
 //Validate calls the baremetal validate api
-func (c *Client) Validate(n *model.Node) (err error) {
+func (c *OpenstackClient) Validate(n *model.Node) (err error) {
 	c.log.Debug("validating node")
 	v, err := nodes.Validate(c.baremetalClient, n.UUID).Extract()
 	if err != nil {
@@ -177,7 +178,7 @@ func (c *Client) Validate(n *model.Node) (err error) {
 
 //WaitForNovaPropagation calls the hypervisor api to check if new node has been
 //propagated to nova
-func (c *Client) WaitForNovaPropagation(n *model.Node) (err error) {
+func (c *OpenstackClient) WaitForNovaPropagation(n *model.Node) (err error) {
 	c.log.Debug("waiting for nova propagation")
 	cfp := wait.ConditionFunc(func() (bool, error) {
 		p, err := hypervisors.List(c.computeClient).AllPages()
@@ -203,7 +204,7 @@ func (c *Client) WaitForNovaPropagation(n *model.Node) (err error) {
 }
 
 //ApplyRules applies rules from a json file
-func (c *Client) ApplyRules(n *model.Node) (err error) {
+func (c *OpenstackClient) ApplyRules(n *model.Node) (err error) {
 	c.log.Debug("applying rules on node")
 	rules, err := c.getRules(n)
 	if err != nil {
@@ -234,7 +235,7 @@ func (c *Client) ApplyRules(n *model.Node) (err error) {
 }
 
 //DeployTestInstance creates a new test instance on the newly created node
-func (c *Client) DeployTestInstance(n *model.Node) (err error) {
+func (c *OpenstackClient) DeployTestInstance(n *model.Node) (err error) {
 	c.log.Debug("creating test instance on node")
 	iID, err := c.getImageID(c.cfg.Deployment.Image)
 	zID, err := c.getConductorZone(c.cfg.Deployment.ConductorZone)
@@ -247,17 +248,25 @@ func (c *Client) DeployTestInstance(n *model.Node) (err error) {
 	if err != nil {
 		return
 	}
-	nets := make([]servers.Network, 1)
-	nets = append(nets, net)
+	nets := make([]servers.Network, 2)
+	nets = append(nets, net, net, net)
+
+	pr, err := newProviderClient(c.cfg.Deployment.OpenstackAuth)
+	if err != nil {
+		return
+	}
+	cc, err := openstack.NewComputeV2(pr, gophercloud.EndpointOpts{
+		Region: c.cfg.Region,
+	})
 
 	opts := servers.CreateOpts{
-		Name:             fmt.Sprintf("%s_inspector_test", time.Now().Format("2006-01-02T15:04:05")),
+		Name:             fmt.Sprintf("%s_temper_test", time.Now().Format("2006-01-02T15:04:05")),
 		FlavorRef:        fID,
 		ImageRef:         iID,
 		AvailabilityZone: fmt.Sprintf("%s::%s", zID, n.UUID),
 		Networks:         nets,
 	}
-	r := servers.Create(c.computeClient, opts)
+	r := servers.Create(cc, opts)
 	s, err := r.Extract()
 	if err != nil {
 		return
@@ -291,7 +300,7 @@ func (c *Client) DeployTestInstance(n *model.Node) (err error) {
 }
 
 //DeleteTestInstance deletes the test instance via the nova api
-func (c *Client) DeleteTestInstance(n *model.Node) (err error) {
+func (c *OpenstackClient) DeleteTestInstance(n *model.Node) (err error) {
 	c.log.Debug("deleting instance on node")
 	if err = servers.ForceDelete(c.computeClient, n.InstanceUUID).ExtractErr(); err != nil {
 		return
@@ -301,7 +310,7 @@ func (c *Client) DeleteTestInstance(n *model.Node) (err error) {
 
 //Provide sets node provisionstate to provided (available).
 //Needed to deploy a test instance on this node
-func (c *Client) Provide(n *model.Node) (err error) {
+func (c *OpenstackClient) Provide(n *model.Node) (err error) {
 	c.log.Debug("providing node")
 	cf := func(tp nodes.TargetProvisionState) wait.ConditionFunc {
 		return wait.ConditionFunc(func() (bool, error) {
@@ -340,14 +349,14 @@ func (c *Client) Provide(n *model.Node) (err error) {
 	return wait.Poll(5*time.Second, 30*time.Second, cfp)
 }
 
-func (c *Client) CreatePortGroup(n *model.Node) (err error) {
+func (c *OpenstackClient) CreatePortGroup(n *model.Node) (err error) {
 	//TODO: create port group
 	return
 }
 
 //Prepare prepares the node for customers.
 //Removes resource_class, sets the rightful conductor and maintenance to true
-func (c *Client) Prepare(n *model.Node) (err error) {
+func (c *OpenstackClient) Prepare(n *model.Node) (err error) {
 	c.log.Debug("preparing node")
 	conductor := strings.Split(n.Name, "-")[1]
 	opts := nodes.UpdateOpts{
@@ -366,7 +375,7 @@ func (c *Client) Prepare(n *model.Node) (err error) {
 }
 
 //DeleteNode deletes a node via the baremetal api
-func (c *Client) DeleteNode(n *model.Node) (err error) {
+func (c *OpenstackClient) DeleteNode(n *model.Node) (err error) {
 	if n.UUID == "" {
 		return
 	}
@@ -382,7 +391,7 @@ func (c *Client) DeleteNode(n *model.Node) (err error) {
 	return wait.Poll(5*time.Second, 30*time.Second, cfp)
 }
 
-func (c *Client) updatePorts(opts ports.UpdateOpts, n *model.Node) (err error) {
+func (c *OpenstackClient) updatePorts(opts ports.UpdateOpts, n *model.Node) (err error) {
 	listOpts := ports.ListOpts{
 		NodeUUID: n.UUID,
 	}
@@ -418,7 +427,7 @@ func (c *Client) updatePorts(opts ports.UpdateOpts, n *model.Node) (err error) {
 	return
 }
 
-func (c *Client) updateNode(opts nodes.UpdateOpts, n *model.Node) (err error) {
+func (c *OpenstackClient) updateNode(opts nodes.UpdateOpts, n *model.Node) (err error) {
 	cf := wait.ConditionFunc(func() (bool, error) {
 		r := nodes.Update(c.baremetalClient, n.UUID, opts)
 		_, err = r.Extract()

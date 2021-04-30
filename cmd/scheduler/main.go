@@ -10,7 +10,7 @@ import (
 
 	"github.com/evalphobia/logrus_sentry"
 	"github.com/sapcc/baremetal_temper/pkg/config"
-	"github.com/sapcc/baremetal_temper/pkg/provision"
+	"github.com/sapcc/baremetal_temper/pkg/scheduler"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
@@ -62,7 +62,7 @@ func main() {
 		log.Error(err)
 		os.Exit(0)
 	}
-	r, err := provision.NewScheduler(ctx, cfg, opts)
+	r, err := scheduler.New(ctx, cfg, opts)
 	if err != nil {
 		log.Error(err)
 		os.Exit(0)

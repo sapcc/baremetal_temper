@@ -9,17 +9,13 @@ import (
 	"github.com/stmcginnis/gofish"
 )
 
-func GetTasks(n model.Node, gc gofish.ClientConfig, cfg config.Config, l *log.Entry) (d []func(n *model.Node) error, err error) {
+func GetHardwareCheckTasks(gc gofish.ClientConfig, cfg config.Config, l *log.Entry) (d []func(n *model.Node) error, err error) {
 	d = make([]func(n *model.Node) error, 0)
 	c, err := gofish.Connect(gc)
 	if err != nil {
 		return
 	}
 	defer c.Logout()
-	d = append(d, ACIClient{
-		cfg: cfg,
-		log: l,
-	}.Run, AristaClient{cfg, l}.Run)
 
 	var dellRe = regexp.MustCompile(`R640|R740|R840`)
 	s, err := c.Service.Systems()
@@ -30,5 +26,14 @@ func GetTasks(n model.Node, gc gofish.ClientConfig, cfg config.Config, l *log.En
 		d = append(d, DellClient{gCfg: gc, log: l}.Run)
 	}
 
+	return
+}
+
+func GetCableCheckTasks(cfg config.Config, l *log.Entry) (d []func(n *model.Node) error, err error) {
+	d = make([]func(n *model.Node) error, 0)
+	d = append(d, ACIClient{
+		cfg: cfg,
+		log: l,
+	}.Run, AristaClient{cfg, l}.Run)
 	return
 }

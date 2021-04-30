@@ -1,4 +1,4 @@
-package provision
+package scheduler
 
 import (
 	"context"
@@ -12,9 +12,9 @@ import (
 	"github.com/netbox-community/go-netbox/netbox/models"
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
-	"github.com/sapcc/baremetal_temper/pkg/diagnostics"
 	"github.com/sapcc/baremetal_temper/pkg/model"
 	"github.com/sapcc/baremetal_temper/pkg/server"
+	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -28,21 +28,18 @@ type NetboxDiscovery struct {
 type Scheduler struct {
 	cfg             config.Config
 	opts            config.Options
-	provisoners     map[string]*Provisioner
 	erroHandler     ErrorHandler
 	ctx             context.Context
 	nodesInProgress map[string]struct{}
 	log             *log.Entry
 	server          *server.Handler
+	tp              *temper.Temper
 	sync.RWMutex
 }
 
-// NewScheduler New Redfish Instance
-func NewScheduler(ctx context.Context, cfg config.Config, opts config.Options) (s Scheduler, err error) {
-	p, err := NewProvisioner(model.Node{}, cfg)
-	if err != nil {
-		return
-	}
+// New Scheduler Instance
+func New(ctx context.Context, cfg config.Config, opts config.Options) (s Scheduler, err error) {
+	t := temper.New(cfg)
 	log.SetFormatter(&log.TextFormatter{
 		DisableColors: false,
 		FullTimestamp: false,
@@ -53,12 +50,12 @@ func NewScheduler(ctx context.Context, cfg config.Config, opts config.Options) (
 
 	s = Scheduler{
 		cfg:             cfg,
-		provisoners:     make(map[string]*Provisioner),
-		erroHandler:     NewErrorHandler(ctx, p),
+		erroHandler:     NewErrorHandler(ctx, t),
 		ctx:             ctx,
 		nodesInProgress: make(map[string]struct{}),
 		log:             ctxLogger,
 		opts:            opts,
+		tp:              t,
 	}
 	return
 }
@@ -70,14 +67,14 @@ func (r *Scheduler) Start(d time.Duration) {
 
 	if r.opts.RedfishEvents {
 		mux := http.NewServeMux()
-		r.server = server.New()
-		go http.ListenAndServe(":8080", mux)
+		r.server = server.New(r.cfg, r.log)
+		go http.ListenAndServe(":9090", mux)
 		go r.eventLoop()
 	}
 
 loop:
 	for {
-		r.log.Debug("starting temper loop...")
+		r.log.Debug("scheduling temper...")
 		nodes, err := r.loadNodes()
 		if err != nil {
 			r.erroHandler.Errors <- err
@@ -96,12 +93,8 @@ loop:
 }
 
 func (r *Scheduler) temper(node model.Node) {
-	p, err := r.getProvisioner(node)
-	if err != nil {
-		r.erroHandler.Errors <- err
-		return
-	}
-	r.log.Infof("tempering node %s", p.Node.Name)
+	var err error
+	r.log.Infof("tempering node %s", node.Name)
 	r.Lock()
 	if _, ok := r.nodesInProgress[node.Name]; ok {
 		r.Unlock()
@@ -110,40 +103,26 @@ func (r *Scheduler) temper(node model.Node) {
 	}
 	r.nodesInProgress[node.Name] = struct{}{}
 	r.Unlock()
-	r.server.RegisterEventRoute(&node)
-	if err = p.clientNetbox.LoadIpamAddresses(&node); err != nil {
-		r.erroHandler.Errors <- err
-		return
-	}
-	p.clientRedfish.SetEndpoint(&node)
-	t, err := r.getTasks(node)
+	node, err = r.tp.LoadNodeInfos(node.Name)
 	if err != nil {
 		r.erroHandler.Errors <- err
 		return
 	}
-	r.execTasks(t, &node)
-}
-
-func (r *Scheduler) execTasks(fns []func(n *model.Node) error, n *model.Node) (err error) {
-	p, err := r.getProvisioner(*n)
-	for _, fn := range fns {
-		if err = fn(n); err != nil {
-			if _, ok := err.(*clients.NodeAlreadyExists); ok {
-				r.log.Infof("Node %s already exists, nothing to temper", p.Node.Name)
-				break
-			}
-			r.erroHandler.Errors <- &SchedulerError{
-				Err:  err.Error(),
-				Node: n,
-			}
-			break
+	t, err := r.tp.GetAllTemperTasks(node.Name, r.opts.Diagnostics, r.opts.Baremetal, r.opts.RedfishEvents)
+	if err != nil {
+		r.erroHandler.Errors <- err
+		return
+	}
+	if err = r.tp.TemperNode(&node, t); err != nil {
+		r.erroHandler.Errors <- &SchedulerError{
+			Err:  err.Error(),
+			Node: &node,
 		}
 	}
-	r.log.Infof("finished tempering node: %s", p.Node.Name)
+	r.log.Infof("finished tempering node: %s", node.Name)
 	r.Lock()
-	delete(r.nodesInProgress, p.Node.Name)
+	delete(r.nodesInProgress, node.Name)
 	defer r.Unlock()
-	return
 }
 
 func (r *Scheduler) loadNodes() (nodes []model.Node, err error) {
@@ -180,53 +159,6 @@ func (r *Scheduler) loadNodes() (nodes []model.Node, err error) {
 		nodes = append(nodes, model.Node{
 			Name: t.Labels["server_name"],
 		})
-	}
-
-	return
-}
-
-func (r *Scheduler) getProvisioner(node model.Node) (p *Provisioner, err error) {
-	p, ok := r.provisoners[node.Name]
-	if ok {
-		return
-	}
-	p, err = NewProvisioner(node, r.cfg)
-	if err == nil {
-		r.Lock()
-		r.provisoners[node.Name] = p
-		r.Unlock()
-	}
-	return
-}
-
-func (r *Scheduler) getTasks(n model.Node) (tasks []func(n *model.Node) error, err error) {
-
-	ctxLogger := log.WithFields(log.Fields{
-		"node": n.Name,
-	})
-
-	p, err := r.getProvisioner(n)
-	if err != nil {
-		return
-	}
-	tasks = make([]func(n *model.Node) error, 0)
-	tasks = append(tasks,
-		p.clientOpenstack.CreateDNSRecords,
-		p.clientRedfish.LoadInventory,
-		p.clientNetbox.LoadInterfaces,
-		p.clientRedfish.BootImage,
-	)
-	if r.opts.Diagnostics {
-		d, err := diagnostics.GetTasks(n, *p.clientRedfish.ClientConfig, r.cfg, ctxLogger)
-		if err != nil {
-			return d, err
-		}
-		tasks = append(tasks, d...)
-	}
-	if r.opts.Baremetal {
-		if baremetal, err := p.clientOpenstack.ServiceEnabled("ironic"); err == nil && baremetal {
-			tasks = append(tasks, p.clientOpenstack.GetBaremetalTasks()...)
-		}
 	}
 
 	return
