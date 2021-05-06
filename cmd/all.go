@@ -16,6 +16,8 @@
 package cmd
 
 import (
+	"sync"
+
 	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -25,40 +27,65 @@ var (
 	baremetal     bool
 	diag          bool
 	redfishEvents bool
+	bootImg       bool
+	nodes         []string
 )
 
 var complete = &cobra.Command{
 	Use:   "complete",
 	Short: "tempers a node",
 	Run: func(cmd *cobra.Command, args []string) {
+		var wg sync.WaitGroup
 		t := temper.New(cfg)
-		c, err := t.GetClients(node)
-		if err != nil {
-			log.Fatal(err)
+		if len(nodes) > 0 {
+			for _, n := range nodes {
+				wg.Add(1)
+				go execComplete(t, n, &wg)
+			}
+		} else {
+			wg.Add(1)
+			go execComplete(t, node, &wg)
 		}
-		n, err := t.LoadNodeInfos(node)
-		if err != nil {
-			log.Fatal(err)
-		}
-		tasks, err := t.GetAllTemperTasks(n.Name, diag, baremetal, redfishEvents)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err = t.TemperNode(&n, tasks); err != nil {
-			log.Fatal(err)
-		}
-
-		if err = c.Netbox.Update(&n); err != nil {
-			log.Fatal(err)
-		}
-		log.Info("node synced")
+		wg.Wait()
+		log.Info("command complete")
 	},
 }
 
+func execComplete(t *temper.Temper, node string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	c, err := t.GetClients(node)
+	if err != nil {
+		log.Errorf("error node %s: %s", node, err.Error())
+		return
+	}
+	n, err := t.LoadNodeInfos(node)
+	if err != nil {
+		log.Errorf("error node %s: %s", node, err.Error())
+		return
+	}
+	tasks, err := t.GetAllTemperTasks(n.Name, diag, baremetal, redfishEvents, bootImg)
+	if err != nil {
+		log.Errorf("error node %s: %s", node, err.Error())
+		return
+	}
+	if err = t.TemperNode(&n, tasks); err != nil {
+		log.Errorf("error node %s: %s", node, err.Error())
+		return
+	}
+
+	if err = c.Netbox.Update(&n); err != nil {
+		log.Errorf("error node %s: %s", node, err.Error())
+		return
+	}
+	log.Infof("node %s done", node)
+}
+
 func init() {
-	complete.PersistentFlags().BoolVar(&baremetal, "baremetal", true, "run baremetal tasks")
+	complete.PersistentFlags().BoolVar(&baremetal, "baremetal", false, "run baremetal tasks")
 	complete.PersistentFlags().BoolVar(&diag, "diagnostics", true, "run diagnostics tasks")
-	complete.PersistentFlags().BoolVar(&redfishEvents, "redfishEvents", true, "use redfish events")
+	complete.PersistentFlags().BoolVar(&redfishEvents, "redfishEvents", false, "use redfish events")
+	complete.PersistentFlags().BoolVar(&bootImg, "bootImage", false, "boots an image before running cablecheck")
+	complete.PersistentFlags().StringArrayVar(&nodes, "nodes", []string{}, "array of nodes")
 
 	rootCmd.AddCommand(complete)
 }

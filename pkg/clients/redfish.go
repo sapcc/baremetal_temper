@@ -42,18 +42,7 @@ func (r *RedfishClient) SetEndpoint(n *model.Node) (err error) {
 	return
 }
 
-func (r *RedfishClient) GetRedfishTasks() (d []func(n *model.Node) error) {
-	d = make([]func(n *model.Node) error, 0)
-	d = append(d) //r.CreateEventSubscription,
-	//r.BootImage,
-
-	return
-}
-
 func (r *RedfishClient) BootImage(n *model.Node) (err error) {
-	if r.cfg.BootImage == nil {
-		return
-	}
 	if err = r.connect(); err != nil {
 		return
 	}

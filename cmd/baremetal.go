@@ -20,7 +20,6 @@ var baremetalCmd = &cobra.Command{
 var create = &cobra.Command{
 	Use:   "create",
 	Short: "Triggers a baremetal node create",
-	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		t := temper.New(cfg)
 		c, err := t.GetClients(node)
@@ -28,17 +27,31 @@ var create = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
-		t.TemperNode(&n, []func(n *model.Node) error{c.Openstack.Create})
-		if err != nil {
+		if err = t.TemperNode(&n, c.Openstack.Create()); err != nil {
 			log.Fatal(err)
 		}
 	},
 }
 
-var deploy = &cobra.Command{
-	Use:   "deploy",
-	Short: "Triggers a baremetal node test deployment",
-	Args:  cobra.ExactArgs(1),
+var test = &cobra.Command{
+	Use:   "test",
+	Short: "Triggers prepare and test tasks",
+	Run: func(cmd *cobra.Command, args []string) {
+		t := temper.New(cfg)
+		c, err := t.GetClients(node)
+		n, err := t.LoadNodeInfos(node)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err = t.TemperNode(&n, c.Openstack.TestAndPrepare()); err != nil {
+			log.Fatal(err)
+		}
+	},
+}
+
+var validate = &cobra.Command{
+	Use:   "validate",
+	Short: "Triggers a baremetal node validation",
 	Run: func(cmd *cobra.Command, args []string) {
 		t := temper.New(cfg)
 		c, err := t.GetClients(node)
@@ -49,8 +62,7 @@ var deploy = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
-		t.TemperNode(&n, []func(n *model.Node) error{c.Openstack.DeployTestInstance})
-		if err != nil {
+		if err = t.TemperNode(&n, []func(n *model.Node) error{c.Openstack.Validate}); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -58,7 +70,7 @@ var deploy = &cobra.Command{
 
 func init() {
 	baremetalCmd.AddCommand(create)
-	baremetalCmd.AddCommand(deploy)
+	baremetalCmd.AddCommand(test)
 
 	rootCmd.AddCommand(baremetalCmd)
 }

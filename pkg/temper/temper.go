@@ -2,6 +2,7 @@ package temper
 
 import (
 	"sync"
+	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
@@ -96,7 +97,7 @@ func (t *Temper) TemperNode(n *model.Node, tasks []func(n *model.Node) error) (e
 	return
 }
 
-func (t *Temper) GetAllTemperTasks(node string, diag bool, bm bool, events bool) (tasks []func(n *model.Node) error, err error) {
+func (t *Temper) GetAllTemperTasks(node string, diag bool, bm bool, events bool, image bool) (tasks []func(n *model.Node) error, err error) {
 	c, err := t.GetClients(node)
 	if err != nil {
 		return
@@ -106,17 +107,21 @@ func (t *Temper) GetAllTemperTasks(node string, diag bool, bm bool, events bool)
 	})
 	tasks = make([]func(n *model.Node) error, 0)
 	tasks = append(tasks, c.Openstack.CreateDNSRecords)
-	tasks = append(tasks, c.Redfish.GetRedfishTasks()...)
 	if diag {
 		d, err := diagnostics.GetHardwareCheckTasks(*c.Redfish.ClientConfig, t.cfg, ctxLogger)
 		if err != nil {
 			return d, err
 		}
 		tasks = append(tasks, d...)
+		if t.cfg.Redfish.BootImage != nil && image {
+			tasks = append(tasks, c.Redfish.BootImage, t.GetTimeoutTask(10*time.Minute))
+		}
+		tasks = append(tasks, diagnostics.GetCableCheckTasks(t.cfg, ctxLogger)...)
 	}
 	if bm {
 		if baremetal, err := c.Openstack.ServiceEnabled("ironic"); err == nil && baremetal {
-			tasks = append(tasks, c.Openstack.GetBaremetalTasks()...)
+			tasks = append(tasks, c.Openstack.Create()...)
+			tasks = append(tasks, c.Openstack.TestAndPrepare()...)
 		}
 	}
 	if events {
@@ -124,5 +129,13 @@ func (t *Temper) GetAllTemperTasks(node string, diag bool, bm bool, events bool)
 	}
 
 	tasks = append(tasks, c.Netbox.Update)
+	return
+}
+
+func (t *Temper) GetTimeoutTask(d time.Duration) (task func(n *model.Node) error) {
+	task = func(n *model.Node) (err error) {
+		time.Sleep(d)
+		return
+	}
 	return
 }

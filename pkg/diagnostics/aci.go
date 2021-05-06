@@ -119,7 +119,7 @@ func (a ACIClient) Run(n *model.Node) (err error) {
 func (a ACIClient) getClient(host string) (c *client.Client) {
 	c, ok := a.c[host]
 	if !ok {
-		cfg := a.cfg.AciAuth
+		cfg := a.cfg.Aci
 		c = client.NewClient("https://"+host, cfg.User, client.Password(cfg.Password), client.Insecure(true), client.SkipLoggingPayload(true), client.ReqTimeout(20))
 		a.c[host] = c
 	}

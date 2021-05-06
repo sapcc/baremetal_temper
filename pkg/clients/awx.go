@@ -40,7 +40,7 @@ func (a AwxClient) ExecTemplates(n *model.Node) (err error) {
 }
 
 func (a AwxClient) execTemplate(l launchBody, temp string) (err error, job string) {
-	cfg := a.cfg.AwxAuth
+	cfg := a.cfg.Awx
 	u := fmt.Sprintf("%s/job_templates/%s/launch", cfg.Host, temp)
 	b, err := json.Marshal(&l)
 	req, err := http.NewRequest("POST", u, bytes.NewBuffer(b))
@@ -68,7 +68,7 @@ func (a AwxClient) execTemplate(l launchBody, temp string) (err error, job strin
 }
 
 func (a AwxClient) checkJobStatus(job string) (err error) {
-	cfg := a.cfg.AwxAuth
+	cfg := a.cfg.Awx
 	u := fmt.Sprintf("%s/jobs/%s/stdout/", cfg.Host, job)
 	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {

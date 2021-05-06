@@ -108,7 +108,7 @@ func (r *Scheduler) temper(node model.Node) {
 		r.erroHandler.Errors <- err
 		return
 	}
-	t, err := r.tp.GetAllTemperTasks(node.Name, r.opts.Diagnostics, r.opts.Baremetal, r.opts.RedfishEvents)
+	t, err := r.tp.GetAllTemperTasks(node.Name, r.opts.Diagnostics, r.opts.Baremetal, r.opts.RedfishEvents, true)
 	if err != nil {
 		r.erroHandler.Errors <- err
 		return

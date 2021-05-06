@@ -31,12 +31,12 @@ func New(cfg config.Config, l *log.Entry) *Handler {
 
 // RegisterEventRoutes for a node event endpoint
 func (h *Handler) RegisterEventRoute() {
-	h.router.HandleFunc("baremetal_temper/events/", h.eventHandler)
+	h.router.HandleFunc("events/", h.eventHandler)
 }
 
 // RegisterEventRoutes for a node event endpoint
-func (h *Handler) RegisterTemperRoutes() {
-	h.router.HandleFunc("baremetal_temper/temper/{node}", h.temperHandler)
+func (h *Handler) RegisterApiRoutes() {
+	h.router.HandleFunc("api/nodes/{node}/tasks/{task}", h.temperHandler).Methods("POST")
 }
 
 func (h *Handler) temperHandler(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +45,9 @@ func (h *Handler) temperHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 		return
+	}
+	if err := h.execTasks(n, r.URL); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
 	}
 	fmt.Fprintf(w, "node: %v\n", n)
 }
@@ -60,15 +63,21 @@ func (h *Handler) eventHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(p[2], bs)
 }
 
-func (h *Handler) execTasks(n string, u *url.URL) (v string, err error) {
-	node := model.Node{Name: n}
+func (h *Handler) execTasks(n string, u *url.URL) (err error) {
 	t := temper.New(h.cfg)
 	c, err := t.GetClients(n)
+	if err != nil {
+		return
+	}
+	no, err := t.LoadNodeInfos(n)
+	if err != nil {
+		return
+	}
 	vals := u.Query()["task"]
 	for _, v := range vals {
 		switch v {
 		case "sync_netbox":
-			c.Netbox.LoadInterfaces(&node)
+			c.Netbox.Update(&no)
 		case "cablecheck":
 		}
 	}

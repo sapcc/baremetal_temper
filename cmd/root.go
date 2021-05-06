@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	logLevel string
+	logLevel int
 	node     string
 	cfgFile  string
 	cfg      config.Config
@@ -29,11 +29,23 @@ Supports warmups and backups.`,
 
 func init() {
 	cobra.OnInitialize(initConfig)
-	rootCmd.PersistentFlags().StringVarP(&logLevel, "log-level", "l", "DEBUG", "temper log level")
+	rootCmd.PersistentFlags().IntVarP(&logLevel, "log-level", "l", 5, "temper log level")
 	rootCmd.PersistentFlags().StringVarP(&node, "node", "n", "", "node name")
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/config.yaml)")
 
-	//rootCmd.Flags()
+	switch logLevel {
+	case 1:
+		log.SetLevel(log.FatalLevel)
+	case 2:
+		log.SetLevel(log.ErrorLevel)
+	case 3:
+		log.SetLevel(log.WarnLevel)
+	case 4:
+		log.SetLevel(log.InfoLevel)
+	case 5:
+		log.SetLevel(log.DebugLevel)
+	}
+
 }
 
 // Execute executes the root command
@@ -83,13 +95,29 @@ func initConfig() {
 	viper.SetDefault("arista.port", "")
 	viper.BindEnv("arista.port", "arista_port")
 
-	viper.SetDefault("aciAuth.user", "")
-	viper.BindEnv("aciAuth.user", "aciAuth_user")
-	viper.SetDefault("aciAuth.password", "")
-	viper.BindEnv("aciAuth.password", "aciAuth_password")
+	viper.SetDefault("aci.user", "")
+	viper.BindEnv("aci.user", "aci_user")
+	viper.SetDefault("aci.password", "")
+	viper.BindEnv("aci.password", "aci_password")
 
-	viper.SetDefault("netboxAuth.host", "")
-	viper.BindEnv("netboxAuth.host", "netboxAuth_host")
+	viper.SetDefault("deployment.image", "")
+	viper.BindEnv("deployment.image", "deployment_image")
+	viper.SetDefault("deployment.conductorZone", "")
+	viper.BindEnv("deployment.conductorZone", "deployment_conductorZone")
+	viper.SetDefault("deployment.flavor", "")
+	viper.BindEnv("deployment.flavor", "deployment_flavor")
+	viper.SetDefault("deployment.network", "")
+	viper.BindEnv("deployment.network", "deployment_network")
+	viper.SetDefault("deployment.openstack.user", "")
+	viper.BindEnv("deployment.openstack.user", "deployment_openstack_user")
+	viper.SetDefault("deployment.openstack.password", "")
+	viper.BindEnv("deployment.openstack.password", "deployment_openstack_password")
+	viper.SetDefault("deployment.openstack.userDomainName", "")
+	viper.BindEnv("deployment.openstack.userDomainName", "deployment_openstack_userDomainName")
+	viper.SetDefault("deployment.openstack.projectName", "")
+	viper.BindEnv("deployment.openstack.projectName", "deployment_openstack_projectName")
+	viper.SetDefault("deployment.openstack.domainName", "")
+	viper.BindEnv("deployment.openstack.domainName", "deployment_openstack_domainName")
 
 	if cfgFile != "" {
 		// Use config file from the flag.

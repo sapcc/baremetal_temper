@@ -15,7 +15,6 @@ var redfishCmd = &cobra.Command{
 var bootImage = &cobra.Command{
 	Use:   "bootimage",
 	Short: "mounts and boots an image via redfish",
-	Args:  cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 		t := temper.New(cfg)
 		c, err := t.GetClients(node)

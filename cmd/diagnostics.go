@@ -13,9 +13,8 @@ var diagCmd = &cobra.Command{
 }
 
 var cableCheck = &cobra.Command{
-	Use:   "hardware",
+	Use:   "hardwarecheck",
 	Short: "runs a vendor specific hardware check",
-	Args:  cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctxLogger := log.WithFields(log.Fields{
 			"cli": "hardwareCheck",
@@ -41,9 +40,8 @@ var cableCheck = &cobra.Command{
 }
 
 var hardwareCheck = &cobra.Command{
-	Use:   "cable",
+	Use:   "cablecheck",
 	Short: "runs a cable check (lldp)",
-	Args:  cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctxLogger := log.WithFields(log.Fields{
 			"cli": "cableCheck",
@@ -53,15 +51,11 @@ var hardwareCheck = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
-		tasks, err := diagnostics.GetCableCheckTasks(cfg, ctxLogger)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err = t.TemperNode(&n, tasks); err != nil {
+		if err = t.TemperNode(&n, diagnostics.GetCableCheckTasks(cfg, ctxLogger)); err != nil {
 			log.Fatal(err)
 		}
 
-		log.Info("node synced")
+		log.Info("cable check successful")
 	},
 }
 

@@ -42,26 +42,32 @@ type ErrorMessage struct {
 	Message string `json:"message"`
 }
 
-func (c *OpenstackClient) GetBaremetalTasks() (d []func(n *model.Node) error) {
+func (c *OpenstackClient) Create() (d []func(n *model.Node) error) {
 	d = make([]func(n *model.Node) error, 0)
 	d = append(d,
-		c.Create,
-		c.CheckCreated,
-		c.ApplyRules,
+		c.create,
+		c.checkCreated,
+		c.applyRules,
 		c.Validate,
-		c.PowerOn,
-		c.Provide,
-		c.WaitForNovaPropagation,
-		c.DeployTestInstance,
+		c.powerOn,
+		c.provide,
+	)
+	return
+}
 
+func (c *OpenstackClient) TestAndPrepare() (d []func(n *model.Node) error) {
+	d = make([]func(n *model.Node) error, 0)
+	d = append(d,
+		c.waitForNovaPropagation,
+		c.deployTestInstance,
 		c.DeleteTestInstance,
-		c.Prepare,
+		c.prepare,
 	)
 	return
 }
 
 //Create creates a new ironic node based on the provided ironic model
-func (c *OpenstackClient) Create(in *model.Node) (err error) {
+func (c *OpenstackClient) create(in *model.Node) (err error) {
 	c.log.Debug("calling inspector api for node creation")
 	client := &http.Client{}
 	u, err := url.Parse(fmt.Sprintf("http://%s", c.cfg.Inspector.Host))
@@ -106,7 +112,7 @@ func (c *OpenstackClient) Create(in *model.Node) (err error) {
 }
 
 //CheckCreated checks if node was created
-func (c *OpenstackClient) CheckCreated(n *model.Node) error {
+func (c *OpenstackClient) checkCreated(n *model.Node) error {
 	if n.UUID == "" {
 		return nil
 	}
@@ -122,7 +128,7 @@ func (c *OpenstackClient) CheckCreated(n *model.Node) error {
 }
 
 //PowerOn powers on the node
-func (c *OpenstackClient) PowerOn(n *model.Node) (err error) {
+func (c *OpenstackClient) powerOn(n *model.Node) (err error) {
 	c.log.Debug("powering on node")
 	powerStateOpts := nodes.PowerStateOpts{
 		Target: nodes.PowerOn,
@@ -178,7 +184,7 @@ func (c *OpenstackClient) Validate(n *model.Node) (err error) {
 
 //WaitForNovaPropagation calls the hypervisor api to check if new node has been
 //propagated to nova
-func (c *OpenstackClient) WaitForNovaPropagation(n *model.Node) (err error) {
+func (c *OpenstackClient) waitForNovaPropagation(n *model.Node) (err error) {
 	c.log.Debug("waiting for nova propagation")
 	cfp := wait.ConditionFunc(func() (bool, error) {
 		p, err := hypervisors.List(c.computeClient).AllPages()
@@ -204,7 +210,7 @@ func (c *OpenstackClient) WaitForNovaPropagation(n *model.Node) (err error) {
 }
 
 //ApplyRules applies rules from a json file
-func (c *OpenstackClient) ApplyRules(n *model.Node) (err error) {
+func (c *OpenstackClient) applyRules(n *model.Node) (err error) {
 	c.log.Debug("applying rules on node")
 	rules, err := c.getRules(n)
 	if err != nil {
@@ -235,7 +241,7 @@ func (c *OpenstackClient) ApplyRules(n *model.Node) (err error) {
 }
 
 //DeployTestInstance creates a new test instance on the newly created node
-func (c *OpenstackClient) DeployTestInstance(n *model.Node) (err error) {
+func (c *OpenstackClient) deployTestInstance(n *model.Node) (err error) {
 	c.log.Debug("creating test instance on node")
 	iID, err := c.getImageID(c.cfg.Deployment.Image)
 	zID, err := c.getConductorZone(c.cfg.Deployment.ConductorZone)
@@ -251,7 +257,7 @@ func (c *OpenstackClient) DeployTestInstance(n *model.Node) (err error) {
 	nets := make([]servers.Network, 2)
 	nets = append(nets, net, net, net)
 
-	pr, err := newProviderClient(c.cfg.Deployment.OpenstackAuth)
+	pr, err := newProviderClient(c.cfg.Deployment.Openstack)
 	if err != nil {
 		return
 	}
@@ -310,7 +316,7 @@ func (c *OpenstackClient) DeleteTestInstance(n *model.Node) (err error) {
 
 //Provide sets node provisionstate to provided (available).
 //Needed to deploy a test instance on this node
-func (c *OpenstackClient) Provide(n *model.Node) (err error) {
+func (c *OpenstackClient) provide(n *model.Node) (err error) {
 	c.log.Debug("providing node")
 	cf := func(tp nodes.TargetProvisionState) wait.ConditionFunc {
 		return wait.ConditionFunc(func() (bool, error) {
@@ -356,7 +362,7 @@ func (c *OpenstackClient) CreatePortGroup(n *model.Node) (err error) {
 
 //Prepare prepares the node for customers.
 //Removes resource_class, sets the rightful conductor and maintenance to true
-func (c *OpenstackClient) Prepare(n *model.Node) (err error) {
+func (c *OpenstackClient) prepare(n *model.Node) (err error) {
 	c.log.Debug("preparing node")
 	conductor := strings.Split(n.Name, "-")[1]
 	opts := nodes.UpdateOpts{

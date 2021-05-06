@@ -20,10 +20,9 @@ var netboxCmd = &cobra.Command{
 	Short: "interact with netbox service",
 }
 
-var sync = &cobra.Command{
+var syncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "syncs a node's netbox information based on redfish data",
-	Args:  cobra.ExactArgs(0),
+	Short: "syncs a node's netbox information based on it's redfish data",
 	Run: func(cmd *cobra.Command, args []string) {
 		t := temper.New(cfg)
 		c, err := t.GetClients(node)
@@ -42,6 +41,6 @@ var sync = &cobra.Command{
 }
 
 func init() {
-	netboxCmd.AddCommand(sync)
+	netboxCmd.AddCommand(syncCmd)
 	rootCmd.AddCommand(netboxCmd)
 }

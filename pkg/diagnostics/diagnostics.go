@@ -29,7 +29,7 @@ func GetHardwareCheckTasks(gc gofish.ClientConfig, cfg config.Config, l *log.Ent
 	return
 }
 
-func GetCableCheckTasks(cfg config.Config, l *log.Entry) (d []func(n *model.Node) error, err error) {
+func GetCableCheckTasks(cfg config.Config, l *log.Entry) (d []func(n *model.Node) error) {
 	d = make([]func(n *model.Node) error, 0)
 	d = append(d, ACIClient{
 		cfg: cfg,

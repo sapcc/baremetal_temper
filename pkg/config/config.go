@@ -13,8 +13,8 @@ type Config struct {
 	Redfish         Redfish       `yaml:"wathever"`
 	Netbox          NetboxAuth    `yaml:"netbox"`
 	Arista          AristaAuth    `yaml:"arista"`
-	AciAuth         AciAuth       `yaml:"aciAuth"`
-	AwxAuth         AwxAuth       `yaml:"awxAuth"`
+	Aci             AciAuth       `yaml:"aci"`
+	Awx             AwxAuth       `yaml:"awx"`
 	NetboxNodesPath string        `yaml:"netboxNodesPath"`
 	RulesPath       string        `yaml:"rulesPath"`
 	Region          string        `yaml:"region"`
@@ -71,7 +71,7 @@ type Deployment struct {
 	ConductorZone string        `yaml:"conductorZone"`
 	Flavor        string        `yaml:"flavor"`
 	Network       string        `yaml:"network"`
-	OpenstackAuth OpenstackAuth `yaml:"osAuth"`
+	Openstack     OpenstackAuth `yaml:"openstack"`
 }
 
 func GetConfig(opts Options) (cfg Config, err error) {

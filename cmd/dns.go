@@ -15,7 +15,6 @@ var dnsCmd = &cobra.Command{
 var createDns = &cobra.Command{
 	Use:   "create",
 	Short: "creates a nodes dns records based on netbox info",
-	Args:  cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 		t := temper.New(cfg)
 		c, err := t.GetClients(node)

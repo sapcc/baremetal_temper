@@ -371,7 +371,7 @@ func (c *OpenstackClient) getRules(n *model.Node) (r config.Rule, err error) {
 }
 
 func (c *OpenstackClient) getNetwork(name string) (n servers.Network, err error) {
-	pr, err := newProviderClient(c.cfg.Deployment.OpenstackAuth)
+	pr, err := newProviderClient(c.cfg.Deployment.Openstack)
 	if err != nil {
 		return
 	}
