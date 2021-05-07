@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/evalphobia/logrus_sentry"
+	"github.com/sapcc/baremetal_temper/cmd"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sapcc/baremetal_temper/pkg/scheduler"
 	"github.com/sirupsen/logrus"
@@ -57,11 +58,9 @@ func main() {
 			os.Exit(0)
 		}
 	}()
-	cfg, err := config.GetConfig(opts)
-	if err != nil {
-		log.Error(err)
-		os.Exit(0)
-	}
+	var cfg config.Config
+	cmd.InitConfig()
+	cmd.ReadInConfig(&cfg)
 	r, err := scheduler.New(ctx, cfg, opts)
 	if err != nil {
 		log.Error(err)

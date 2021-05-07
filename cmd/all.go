@@ -28,7 +28,6 @@ var (
 	diag          bool
 	redfishEvents bool
 	bootImg       bool
-	nodes         []string
 )
 
 var complete = &cobra.Command{
@@ -42,9 +41,6 @@ var complete = &cobra.Command{
 				wg.Add(1)
 				go execComplete(t, n, &wg)
 			}
-		} else {
-			wg.Add(1)
-			go execComplete(t, node, &wg)
 		}
 		wg.Wait()
 		log.Info("command complete")
@@ -85,7 +81,6 @@ func init() {
 	complete.PersistentFlags().BoolVar(&diag, "diagnostics", true, "run diagnostics tasks")
 	complete.PersistentFlags().BoolVar(&redfishEvents, "redfishEvents", false, "use redfish events")
 	complete.PersistentFlags().BoolVar(&bootImg, "bootImage", false, "boots an image before running cablecheck")
-	complete.PersistentFlags().StringArrayVar(&nodes, "nodes", []string{}, "array of nodes")
 
 	rootCmd.AddCommand(complete)
 }

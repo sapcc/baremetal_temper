@@ -55,13 +55,13 @@ func (c *OpenstackClient) Create() (d []func(n *model.Node) error) {
 	return
 }
 
-func (c *OpenstackClient) TestAndPrepare() (d []func(n *model.Node) error) {
+func (c *OpenstackClient) DeploymentTest() (d []func(n *model.Node) error) {
 	d = make([]func(n *model.Node) error, 0)
 	d = append(d,
+		c.getUUID,
 		c.waitForNovaPropagation,
 		c.deployTestInstance,
 		c.DeleteTestInstance,
-		c.prepare,
 	)
 	return
 }
@@ -127,6 +127,36 @@ func (c *OpenstackClient) checkCreated(n *model.Node) error {
 	return nil
 }
 
+//CheckCreated checks if node was created
+func (c *OpenstackClient) getUUID(n *model.Node) (err error) {
+	c.log.Debug("get node uuid")
+	if n.UUID != "" {
+		return
+	}
+	p, err := nodes.List(c.baremetalClient, nodes.ListOpts{}).AllPages()
+	if err != nil {
+		return &NodeNotFoundError{
+			Err: fmt.Sprintf("could not find node %s uuid", n.Name),
+		}
+	}
+	nodes, err := nodes.ExtractNodes(p)
+	if err != nil {
+		return
+	}
+	for _, no := range nodes {
+		if no.Name == n.Name {
+			n.UUID = no.UUID
+			break
+		}
+	}
+	if n.UUID == "" {
+		return &NodeNotFoundError{
+			Err: fmt.Sprintf("could not find node %s uuid", n.Name),
+		}
+	}
+	return
+}
+
 //PowerOn powers on the node
 func (c *OpenstackClient) powerOn(n *model.Node) (err error) {
 	c.log.Debug("powering on node")
@@ -161,6 +191,9 @@ func (c *OpenstackClient) powerOn(n *model.Node) (err error) {
 //Validate calls the baremetal validate api
 func (c *OpenstackClient) Validate(n *model.Node) (err error) {
 	c.log.Debug("validating node")
+	if err = c.getUUID(n); err != nil {
+		return
+	}
 	v, err := nodes.Validate(c.baremetalClient, n.UUID).Extract()
 	if err != nil {
 		return
@@ -244,7 +277,13 @@ func (c *OpenstackClient) applyRules(n *model.Node) (err error) {
 func (c *OpenstackClient) deployTestInstance(n *model.Node) (err error) {
 	c.log.Debug("creating test instance on node")
 	iID, err := c.getImageID(c.cfg.Deployment.Image)
+	if err != nil {
+		return
+	}
 	zID, err := c.getConductorZone(c.cfg.Deployment.ConductorZone)
+	if err != nil {
+		return
+	}
 	fID, err := c.getFlavorID(c.cfg.Deployment.Flavor)
 	if err != nil {
 		return
@@ -254,7 +293,7 @@ func (c *OpenstackClient) deployTestInstance(n *model.Node) (err error) {
 	if err != nil {
 		return
 	}
-	nets := make([]servers.Network, 2)
+	nets := make([]servers.Network, 0, 2)
 	nets = append(nets, net, net, net)
 
 	pr, err := newProviderClient(c.cfg.Deployment.Openstack)
@@ -362,7 +401,10 @@ func (c *OpenstackClient) CreatePortGroup(n *model.Node) (err error) {
 
 //Prepare prepares the node for customers.
 //Removes resource_class, sets the rightful conductor and maintenance to true
-func (c *OpenstackClient) prepare(n *model.Node) (err error) {
+func (c *OpenstackClient) Prepare(n *model.Node) (err error) {
+	if err = c.getUUID(n); err != nil {
+		return
+	}
 	c.log.Debug("preparing node")
 	conductor := strings.Split(n.Name, "-")[1]
 	opts := nodes.UpdateOpts{

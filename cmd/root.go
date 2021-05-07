@@ -11,7 +11,7 @@ import (
 
 var (
 	logLevel int
-	node     string
+	nodes    []string
 	cfgFile  string
 	cfg      config.Config
 )
@@ -28,9 +28,9 @@ Supports warmups and backups.`,
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
+	cobra.OnInitialize(InitConfig)
 	rootCmd.PersistentFlags().IntVarP(&logLevel, "log-level", "l", 5, "temper log level")
-	rootCmd.PersistentFlags().StringVarP(&node, "node", "n", "", "node name")
+	rootCmd.PersistentFlags().StringArrayVarP(&nodes, "nodes", "n", []string{}, "array of nodes")
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/config.yaml)")
 
 	switch logLevel {
@@ -56,7 +56,7 @@ func Execute() {
 }
 
 // initConfig reads in config file and ENV variables if set.
-func initConfig() {
+func InitConfig() {
 	viper.SetDefault("region", "")
 	viper.BindEnv("region", "region")
 
@@ -79,8 +79,8 @@ func initConfig() {
 	viper.BindEnv("openstack.user", "openstack_user")
 	viper.SetDefault("openstack.password", "")
 	viper.BindEnv("openstack.password", "openstack_password")
-	viper.SetDefault("openstack.userDomainName", "")
-	viper.BindEnv("openstack.userDomainName", "openstack_userDomainName")
+	viper.SetDefault("openstack.projectDomainName", "")
+	viper.BindEnv("openstack.projectDomainName", "openstack_projectDomainName")
 	viper.SetDefault("openstack.projectName", "")
 	viper.BindEnv("openstack.projectName", "openstack_projectName")
 	viper.SetDefault("openstack.domainName", "")
@@ -112,8 +112,8 @@ func initConfig() {
 	viper.BindEnv("deployment.openstack.user", "deployment_openstack_user")
 	viper.SetDefault("deployment.openstack.password", "")
 	viper.BindEnv("deployment.openstack.password", "deployment_openstack_password")
-	viper.SetDefault("deployment.openstack.userDomainName", "")
-	viper.BindEnv("deployment.openstack.userDomainName", "deployment_openstack_userDomainName")
+	viper.SetDefault("deployment.openstack.projectDomainName", "")
+	viper.BindEnv("deployment.openstack.projectDomainName", "deployment_openstack_projectDomainName")
 	viper.SetDefault("deployment.openstack.projectName", "")
 	viper.BindEnv("deployment.openstack.projectName", "deployment_openstack_projectName")
 	viper.SetDefault("deployment.openstack.domainName", "")
@@ -136,7 +136,10 @@ func initConfig() {
 		log.Info("Using config file:", viper.ConfigFileUsed())
 	}
 	viper.AutomaticEnv() // read in environment variables that match
+	ReadInConfig(&cfg)
+}
 
+func ReadInConfig(cfg *config.Config) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		log.Fatal(err.Error())
 	}

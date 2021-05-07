@@ -121,7 +121,8 @@ func (t *Temper) GetAllTemperTasks(node string, diag bool, bm bool, events bool,
 	if bm {
 		if baremetal, err := c.Openstack.ServiceEnabled("ironic"); err == nil && baremetal {
 			tasks = append(tasks, c.Openstack.Create()...)
-			tasks = append(tasks, c.Openstack.TestAndPrepare()...)
+			tasks = append(tasks, c.Openstack.DeploymentTest()...)
+			tasks = append(tasks, c.Openstack.Prepare)
 		}
 	}
 	if events {
