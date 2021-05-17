@@ -100,9 +100,9 @@ func (n *NetboxClient) LoadIpamAddresses(i *model.Node) (err error) {
 			if err != nil {
 				return err
 			}
-			fmt.Println(a.DNSName, i.Name, ip.String())
 			i.PrimaryIP = ip.String()
 		}
+
 		if strings.Contains(a.DNSName, name+"r") {
 			ip, _, err := net.ParseCIDR(*a.Address)
 			if err != nil {

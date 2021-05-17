@@ -28,7 +28,6 @@ type NetboxDiscovery struct {
 type Scheduler struct {
 	cfg             config.Config
 	opts            config.Options
-	erroHandler     ErrorHandler
 	ctx             context.Context
 	nodesInProgress map[string]struct{}
 	log             *log.Entry
@@ -39,7 +38,7 @@ type Scheduler struct {
 
 // New Scheduler Instance
 func New(ctx context.Context, cfg config.Config, opts config.Options) (s Scheduler, err error) {
-	t := temper.New(cfg)
+	t := temper.New(cfg, ctx, true)
 	log.SetFormatter(&log.TextFormatter{
 		DisableColors: false,
 		FullTimestamp: false,
@@ -50,7 +49,6 @@ func New(ctx context.Context, cfg config.Config, opts config.Options) (s Schedul
 
 	s = Scheduler{
 		cfg:             cfg,
-		erroHandler:     NewErrorHandler(ctx, t),
 		ctx:             ctx,
 		nodesInProgress: make(map[string]struct{}),
 		log:             ctxLogger,
@@ -77,7 +75,7 @@ loop:
 		r.log.Debug("scheduling temper...")
 		nodes, err := r.loadNodes()
 		if err != nil {
-			r.erroHandler.Errors <- err
+			r.log.Error(err)
 			continue
 		}
 		for _, node := range nodes {
@@ -105,20 +103,15 @@ func (r *Scheduler) temper(node model.Node) {
 	r.Unlock()
 	node, err = r.tp.LoadNodeInfos(node.Name)
 	if err != nil {
-		r.erroHandler.Errors <- err
+		r.log.Error(err)
 		return
 	}
 	t, err := r.tp.GetAllTemperTasks(node.Name, r.opts.Diagnostics, r.opts.Baremetal, r.opts.RedfishEvents, true)
 	if err != nil {
-		r.erroHandler.Errors <- err
+		r.log.Error(err)
 		return
 	}
-	if err = r.tp.TemperNode(&node, t); err != nil {
-		r.erroHandler.Errors <- &SchedulerError{
-			Err:  err.Error(),
-			Node: &node,
-		}
-	}
+	r.tp.TemperNode(&node, t)
 	r.log.Infof("finished tempering node: %s", node.Name)
 	r.Lock()
 	delete(r.nodesInProgress, node.Name)

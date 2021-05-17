@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -46,7 +47,7 @@ func (h *Handler) temperHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if err := h.execTasks(n, r.URL); err != nil {
+	if err := h.execTasks(n, r.URL, r.Context()); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 	fmt.Fprintf(w, "node: %v\n", n)
@@ -63,8 +64,8 @@ func (h *Handler) eventHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(p[2], bs)
 }
 
-func (h *Handler) execTasks(n string, u *url.URL) (err error) {
-	t := temper.New(h.cfg)
+func (h *Handler) execTasks(n string, u *url.URL, ctx context.Context) (err error) {
+	t := temper.New(h.cfg, ctx, true)
 	c, err := t.GetClients(n)
 	if err != nil {
 		return

@@ -38,6 +38,9 @@ func NewRedfishClient(cfg config.Config, ctxLogger *log.Entry) *RedfishClient {
 
 //SetEndpoint sets the redfish api endpoint
 func (r *RedfishClient) SetEndpoint(n *model.Node) (err error) {
+	if n.RemoteIP == "" {
+		return fmt.Errorf("no remote ip address set")
+	}
 	r.ClientConfig.Endpoint = fmt.Sprintf("https://%s", n.RemoteIP)
 	return
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"text/template"
 
 	"github.com/sapcc/baremetal_temper/pkg/config"
@@ -278,6 +279,18 @@ func (c *OpenstackClient) getFlavorID(name string) (id string, err error) {
 	return
 }
 
+func (c *OpenstackClient) getRootDeviceSize(n *model.Node) (size int64, err error) {
+	size = n.InspectionData.RootDisk.Size / 1024 / 1024 / 1024
+	l := len(strconv.FormatInt(size, 10))
+	switch l {
+	case 3:
+		size = 100 * ((size + 90) / 100)
+	case 4:
+		size = 1000 * ((size + 900) / 1000)
+	}
+	return
+}
+
 func (c *OpenstackClient) getMatchingFlavorFor(n *model.Node) (name string, err error) {
 	mem := 0.1
 	disk := 0.2
@@ -349,6 +362,7 @@ func (c *OpenstackClient) getRules(n *model.Node) (r config.Rule, err error) {
 	var funcMap = template.FuncMap{
 		"imageToID":            c.getImageID,
 		"getMatchingFlavorFor": c.getMatchingFlavorFor,
+		"getRootDeviceSize":    c.getRootDeviceSize,
 	}
 
 	tmpl := template.New("rules.json").Funcs(funcMap)

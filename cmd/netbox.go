@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"sync"
 
 	"github.com/sapcc/baremetal_temper/pkg/model"
@@ -27,7 +28,7 @@ var syncCmd = &cobra.Command{
 	Short: "syncs a node's netbox information based on it's redfish data",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
-		t := temper.New(cfg)
+		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
 				c, err := t.GetClients(n)

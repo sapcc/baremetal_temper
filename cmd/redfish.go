@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"sync"
 
 	"github.com/sapcc/baremetal_temper/pkg/model"
@@ -19,7 +20,7 @@ var bootImage = &cobra.Command{
 	Short: "mounts and boots an image via redfish",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
-		t := temper.New(cfg)
+		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
 				c, err := t.GetClients(n)

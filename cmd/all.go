@@ -16,6 +16,7 @@
 package cmd
 
 import (
+	"context"
 	"sync"
 
 	"github.com/sapcc/baremetal_temper/pkg/temper"
@@ -35,7 +36,7 @@ var complete = &cobra.Command{
 	Short: "tempers a node",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
-		t := temper.New(cfg)
+		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
 				wg.Add(1)

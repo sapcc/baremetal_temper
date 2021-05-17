@@ -1,6 +1,7 @@
 package temper
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -12,9 +13,21 @@ import (
 )
 
 type Temper struct {
-	cfg     config.Config
-	clients map[string]apiClients
+	cfg          config.Config
+	clients      map[string]apiClients
+	Errors       chan error
+	ctx          context.Context
+	netboxStatus bool
 	sync.RWMutex
+}
+
+type TemperError struct {
+	Err  string
+	Node *model.Node
+}
+
+func (n *TemperError) Error() string {
+	return n.Err
 }
 
 type apiClients struct {
@@ -23,8 +36,10 @@ type apiClients struct {
 	Netbox    *clients.NetboxClient
 }
 
-func New(cfg config.Config) *Temper {
-	return &Temper{cfg: cfg, clients: make(map[string]apiClients)}
+func New(cfg config.Config, ctx context.Context, setNetboxStatus bool) (t *Temper) {
+	t = &Temper{cfg: cfg, clients: make(map[string]apiClients), ctx: ctx, netboxStatus: setNetboxStatus}
+	go t.initErrorHandler()
+	return
 }
 
 func (t *Temper) GetClients(node string) (c apiClients, err error) {
@@ -91,7 +106,20 @@ func (t *Temper) TemperNode(n *model.Node, tasks []func(n *model.Node) error) (e
 				log.Infof("Node %s already exists, nothing to temper", n.Name)
 				break
 			}
+			t.Errors <- &TemperError{
+				Err:  err.Error(),
+				Node: n,
+			}
 			return err
+		}
+		if t.netboxStatus {
+			c, err := t.GetClients(n.Name)
+			if err != nil {
+				log.Error(err)
+			}
+			if err = c.Netbox.SetStatusStaged(n); err != nil {
+				log.Error(err)
+			}
 		}
 	}
 	return
@@ -139,4 +167,34 @@ func (t *Temper) GetTimeoutTask(d time.Duration) (task func(n *model.Node) error
 		return
 	}
 	return
+}
+
+func (t *Temper) initErrorHandler() {
+	for {
+		select {
+		case err := <-t.Errors:
+			if serr, ok := err.(*TemperError); ok {
+				log.Errorf("error tempering node %s. err: %s", serr.Node.Name, serr.Err)
+				c, err := t.GetClients(serr.Node.Name)
+				if serr.Node.InstanceUUID != "" {
+					if err = c.Openstack.DeleteTestInstance(serr.Node); err != nil {
+						log.Error("cannot delete compute instance %s. err: %s", serr.Node.InstanceUUID, err.Error())
+					}
+				}
+				if err = c.Openstack.DeleteNode(serr.Node); err != nil {
+					log.Errorf("cannot delete node %s. err: %s", serr.Node.Name, err.Error())
+				}
+				if t.netboxStatus {
+					if err = c.Netbox.SetStatusFailed(serr.Node, serr.Err); err != nil {
+						log.Errorf("cannot set node %s status in netbox. err: %s", serr.Node.Name, err.Error())
+					}
+				}
+
+			} else {
+				log.Error(err.Error())
+			}
+		case <-t.ctx.Done():
+			return
+		}
+	}
 }

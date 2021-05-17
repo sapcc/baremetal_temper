@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"sync"
 
 	"github.com/sapcc/baremetal_temper/pkg/model"
@@ -25,7 +26,7 @@ var create = &cobra.Command{
 	Short: "Triggers a baremetal node create",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
-		t := temper.New(cfg)
+		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
 				c, err := t.GetClients(n)
@@ -53,7 +54,7 @@ var test = &cobra.Command{
 	Short: "Triggers prepare and test tasks",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
-		t := temper.New(cfg)
+		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
 				c, err := t.GetClients(n)
@@ -75,7 +76,7 @@ var validate = &cobra.Command{
 	Short: "Triggers a baremetal node validation",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
-		t := temper.New(cfg)
+		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
 				c, err := t.GetClients(n)
@@ -97,7 +98,7 @@ var prepare = &cobra.Command{
 	Short: "Triggers a baremetal node preparation",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
-		t := temper.New(cfg)
+		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
 				c, err := t.GetClients(n)

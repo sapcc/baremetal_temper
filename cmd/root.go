@@ -10,10 +10,11 @@ import (
 )
 
 var (
-	logLevel int
-	nodes    []string
-	cfgFile  string
-	cfg      config.Config
+	logLevel     int
+	nodes        []string
+	netboxStatus bool
+	cfgFile      string
+	cfg          config.Config
 )
 
 var rootCmd = &cobra.Command{
@@ -32,6 +33,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVarP(&logLevel, "log-level", "l", 5, "temper log level")
 	rootCmd.PersistentFlags().StringArrayVarP(&nodes, "nodes", "n", []string{}, "array of nodes")
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/config.yaml)")
+	rootCmd.PersistentFlags().BoolVarP(&netboxStatus, "netbox-status", "u", false, "set to true if the netbox status should be updated")
 
 	switch logLevel {
 	case 1:

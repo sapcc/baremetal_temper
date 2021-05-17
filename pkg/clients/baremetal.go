@@ -69,7 +69,7 @@ func (c *OpenstackClient) DeploymentTest() (d []func(n *model.Node) error) {
 //Create creates a new ironic node based on the provided ironic model
 func (c *OpenstackClient) create(in *model.Node) (err error) {
 	c.log.Debug("calling inspector api for node creation")
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	u, err := url.Parse(fmt.Sprintf("http://%s", c.cfg.Inspector.Host))
 	if err != nil {
 		return
