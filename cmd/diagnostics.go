@@ -75,8 +75,12 @@ func cableCheckExec(n string, t *temper.Temper, wg *sync.WaitGroup) {
 		node.BootImage()
 		time.Sleep(5 * time.Minute)
 	}
-	node.RunAristaCheck()
-	node.SetStatus()
+	if err = node.RunAristaCheck(); err != nil {
+		log.Errorf("error node %s: %s", n, err.Error())
+	}
+	if err = node.RunACICheck(); err != nil {
+		log.Errorf("error node %s: %s", n, err.Error())
+	}
 }
 
 func init() {

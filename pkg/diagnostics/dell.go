@@ -81,7 +81,10 @@ func (d DellClient) Run() (err error) {
 				return err
 			}
 			jobID = job.ID
+		} else {
+			return fmt.Errorf(idracErr.Error.Message[0].Message)
 		}
+
 	} else if resp.StatusCode != 202 {
 		return fmt.Errorf("run remote diags not successful")
 	} else {

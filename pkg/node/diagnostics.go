@@ -49,7 +49,7 @@ func (n *Node) RunACICheck() (err error) {
 			continue
 		}
 		if i.PortLinkStatus == redfish.DownPortLinkStatus {
-			noLldp = append(noLldp, iName+"<interface_down>")
+			noLldp = append(noLldp, iName+"(interface_down)")
 			continue
 		}
 		var co *container.Container

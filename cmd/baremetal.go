@@ -28,11 +28,20 @@ var create = &cobra.Command{
 					log.Errorf("error node %s: %s", n, err.Error())
 					continue
 				}
-				nd.Create()
-				if testDeployment {
-					nd.DeployTestInstance()
+				if err = nd.Create(); err != nil {
+					log.Errorf("error node %s: %s", n, err.Error())
+					continue
 				}
-				nd.Prepare()
+				if testDeployment {
+					if err = nd.DeployTestInstance(); err != nil {
+						log.Errorf("error node %s: %s", n, err.Error())
+						continue
+					}
+				}
+				if err = nd.Prepare(); err != nil {
+					log.Errorf("error node %s: %s", n, err.Error())
+					continue
+				}
 			}
 		}
 		log.Info("create completed")
@@ -51,7 +60,10 @@ var test = &cobra.Command{
 					log.Errorf("error node %s: %s", n, err.Error())
 					continue
 				}
-				node.DeployTestInstance()
+				if err = node.DeployTestInstance(); err != nil {
+					log.Errorf("error node %s: %s", n, err.Error())
+					continue
+				}
 			}
 		}
 		log.Info("test completed")
@@ -70,7 +82,10 @@ var validate = &cobra.Command{
 					log.Errorf("error node %s: %s", n, err.Error())
 					continue
 				}
-				node.Validate()
+				if err = node.Validate(); err != nil {
+					log.Errorf("error node %s: %s", n, err.Error())
+					continue
+				}
 			}
 		}
 		//wg.Wait()
@@ -90,7 +105,10 @@ var prepare = &cobra.Command{
 					log.Errorf("error node %s: %s", n, err.Error())
 					continue
 				}
-				node.Prepare()
+				if err = node.Prepare(); err != nil {
+					log.Errorf("error node %s: %s", n, err.Error())
+					continue
+				}
 			}
 		}
 		//wg.Wait()

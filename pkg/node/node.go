@@ -10,7 +10,7 @@ import (
 )
 
 type Node struct {
-	Name         string
+	Name         string `json:"name"`
 	RemoteIP     string
 	PrimaryIP    string
 	UUID         string `json:"uuid"`
@@ -18,7 +18,7 @@ type Node struct {
 	InstanceIPv4 string
 	Host         string
 	Tasks        map[int]*Task
-	Status       string
+	Status       string `json:"status"`
 	Clients      ApiClients
 
 	ResourceClass  string
