@@ -9,10 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/netbox-community/go-netbox/netbox/models"
-	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
-	"github.com/sapcc/baremetal_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/node"
 	"github.com/sapcc/baremetal_temper/pkg/server"
 	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
@@ -90,53 +88,37 @@ loop:
 	}
 }
 
-func (r *Scheduler) temper(node model.Node) {
+func (r *Scheduler) temper(n string) {
 	var err error
-	r.log.Infof("tempering node %s", node.Name)
+	r.log.Infof("tempering node %s", n)
 	r.Lock()
-	if _, ok := r.nodesInProgress[node.Name]; ok {
+	if _, ok := r.nodesInProgress[n]; ok {
 		r.Unlock()
-		r.log.Infof("node %s is already being tempered", node.Name)
+		r.log.Infof("node %s is already being tempered", n)
 		return
 	}
-	r.nodesInProgress[node.Name] = struct{}{}
+	r.nodesInProgress[n] = struct{}{}
 	r.Unlock()
-	node, err = r.tp.LoadNodeInfos(node.Name)
+	ni, err := node.New(n, r.cfg)
 	if err != nil {
 		r.log.Error(err)
 		return
 	}
-	t, err := r.tp.GetAllTemperTasks(node.Name, r.opts.Diagnostics, r.opts.Baremetal, r.opts.RedfishEvents, true)
-	if err != nil {
-		r.log.Error(err)
-		return
-	}
-	r.tp.TemperNode(&node, t)
-	r.log.Infof("finished tempering node: %s", node.Name)
+	r.tp.SetAllTemperTasks(ni, r.opts.Diagnostics, r.opts.Baremetal, r.opts.RedfishEvents, true)
+	r.tp.TemperNode(ni, true)
+	r.log.Infof("finished tempering node: %s", n)
 	r.Lock()
-	delete(r.nodesInProgress, node.Name)
+	delete(r.nodesInProgress, n)
 	defer r.Unlock()
 }
 
-func (r *Scheduler) loadNodes() (nodes []model.Node, err error) {
+func (r *Scheduler) loadNodes() (nodes []string, err error) {
 	targets := make([]NetboxDiscovery, 0)
-
+	nodes = make([]string, 0)
 	if r.cfg.NetboxNodesPath == "" {
-		var n *clients.NetboxClient
-		n, err = clients.NewNetboxClient(r.cfg, r.log)
+		nodes, err = r.tp.LoadPlannedNodes(nil)
 		if err != nil {
 			return
-		}
-		var pNodes []*models.DeviceWithConfigContext
-		pNodes, err = n.LoadPlannedNodes(r.cfg)
-		if err != nil {
-			return
-		}
-
-		for _, n := range pNodes {
-			nodes = append(nodes, model.Node{
-				Name: *n.Name,
-			})
 		}
 		return
 	}
@@ -147,13 +129,9 @@ func (r *Scheduler) loadNodes() (nodes []model.Node, err error) {
 	if err = json.Unmarshal(d, &targets); err != nil {
 		return
 	}
-
 	for _, t := range targets {
-		nodes = append(nodes, model.Node{
-			Name: t.Labels["server_name"],
-		})
+		nodes = append(nodes, t.Labels["server_name"])
 	}
-
 	return
 }
 

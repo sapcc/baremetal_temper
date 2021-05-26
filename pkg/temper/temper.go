@@ -2,199 +2,138 @@ package temper
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
-	"github.com/sapcc/baremetal_temper/pkg/diagnostics"
-	"github.com/sapcc/baremetal_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/node"
 	log "github.com/sirupsen/logrus"
 )
 
 type Temper struct {
 	cfg          config.Config
-	clients      map[string]apiClients
-	Errors       chan error
 	ctx          context.Context
+	netbox       *clients.NetboxClient
 	netboxStatus bool
 	sync.RWMutex
 }
 
 type TemperError struct {
 	Err  string
-	Node *model.Node
+	Node *node.Node
 }
 
 func (n *TemperError) Error() string {
 	return n.Err
 }
 
-type apiClients struct {
-	Openstack *clients.OpenstackClient
-	Redfish   *clients.RedfishClient
-	Netbox    *clients.NetboxClient
-}
-
 func New(cfg config.Config, ctx context.Context, setNetboxStatus bool) (t *Temper) {
-	t = &Temper{cfg: cfg, clients: make(map[string]apiClients), ctx: ctx, netboxStatus: setNetboxStatus}
-	go t.initErrorHandler()
-	return
-}
-
-func (t *Temper) GetClients(node string) (c apiClients, err error) {
-	c, ok := t.clients[node]
-	if ok {
-		return
-	}
-	c, err = t.createClients(node)
-	if err != nil {
-		return
-	}
-	t.Lock()
-	t.clients[node] = c
-	t.Unlock()
-
-	return
-}
-
-func (t *Temper) createClients(node string) (c apiClients, err error) {
 	ctxLogger := log.WithFields(log.Fields{
-		"node": node,
+		"temper": "temper",
 	})
-	if t.cfg.Openstack.Url != "" {
-		c.Openstack, err = clients.NewClient(t.cfg, ctxLogger)
-		if err != nil {
-			return
-		}
-	}
-	if t.cfg.Redfish.User != "" {
-		c.Redfish = clients.NewRedfishClient(t.cfg, ctxLogger)
-	}
-	if t.cfg.Netbox.Token != "" {
-		c.Netbox, err = clients.NewNetboxClient(t.cfg, ctxLogger)
-		if err != nil {
-			return
-		}
+	n, _ := clients.NewNetboxClient(cfg, ctxLogger)
+	t = &Temper{
+		cfg: cfg,
+		ctx: ctx, netboxStatus: setNetboxStatus,
+		netbox: n,
 	}
 	return
 }
 
-func (t *Temper) LoadNodeInfos(node string) (n model.Node, err error) {
-	c, err := t.GetClients(node)
-	if err != nil {
-		return
+func (t *Temper) TemperNode(n *node.Node, netboxSts bool) (err error) {
+	prios := make([]int, 0, len(n.Tasks))
+	for k := range n.Tasks {
+		prios = append(prios, k)
 	}
-	n.Name = node
-	if err = c.Netbox.LoadIpamAddresses(&n); err != nil {
-		return
+	sort.Ints(prios)
+	for _, k := range prios {
+		fmt.Println(n.Tasks[k].Name)
 	}
-	c.Redfish.SetEndpoint(&n)
-	if err = c.Redfish.LoadInventory(&n); err != nil {
-		return
-	}
-	if err = c.Netbox.LoadInterfaces(&n); err != nil {
-		return
-	}
-	return
-}
-
-func (t *Temper) TemperNode(n *model.Node, tasks []func(n *model.Node) error) (err error) {
-	for _, task := range tasks {
-		if err = task(n); err != nil {
-			if _, ok := err.(*clients.NodeAlreadyExists); ok {
+	for _, k := range prios {
+		if err = n.Tasks[k].Exec(); err != nil {
+			if _, ok := err.(*node.AlreadyExists); ok {
 				log.Infof("Node %s already exists, nothing to temper", n.Name)
 				break
 			}
-			t.Errors <- &TemperError{
-				Err:  err.Error(),
-				Node: n,
-			}
-			return err
-		}
-		if t.netboxStatus {
-			c, err := t.GetClients(n.Name)
-			if err != nil {
-				log.Error(err)
-			}
-			if err = c.Netbox.SetStatusStaged(n); err != nil {
-				log.Error(err)
-			}
+			n.Tasks[k].Error = err
+			n.Status = "failed"
 		}
 	}
+	t.cleanupHandler(n, netboxSts)
 	return
 }
 
-func (t *Temper) GetAllTemperTasks(node string, diag bool, bm bool, events bool, image bool) (tasks []func(n *model.Node) error, err error) {
-	c, err := t.GetClients(node)
+func (t *Temper) SetAllTemperTasks(n *node.Node, diag bool, bm bool, events bool, image bool) {
+	n.GetOrCreateTask(0, "create_dns_records").Exec = n.CreateDNSRecords
+	if events {
+		n.GetOrCreateTask(10, "create_event_sub").Exec = n.CreateEventSubscription
+	}
+	if diag {
+		n.GetOrCreateTask(20, "hardware_check").Exec = n.RunHardwareChecks
+
+		if t.cfg.Redfish.BootImage != nil && image {
+			n.GetOrCreateTask(30, "boot_image").Exec = n.BootImage
+			n.GetOrCreateTask(40, "boot_image_wait").Exec = TimeoutTask(5 * time.Minute)
+		}
+		n.GetOrCreateTask(50, "aci_check").Exec = n.RunACICheck
+		n.GetOrCreateTask(51, "arista_check").Exec = n.RunAristaCheck
+	}
+	if bm {
+		n.GetOrCreateTask(60, "aci_check").Exec = n.Create
+		n.GetOrCreateTask(61, "aci_check").Exec = n.ApplyRules
+		n.GetOrCreateTask(62, "aci_check").Exec = n.Validate
+		n.GetOrCreateTask(63, "aci_check").Exec = n.Prepare
+		n.GetOrCreateTask(64, "aci_check").Exec = n.WaitForNovaPropagation
+		n.GetOrCreateTask(65, "aci_check").Exec = n.DeployTestInstance
+
+	}
+	if events {
+		n.GetOrCreateTask(70, "delete_event_sub").Exec = n.DeleteEventSubscription
+	}
+	n.GetOrCreateTask(100, "update_netbox").Exec = n.Update
+	return
+}
+
+func (t *Temper) LoadPlannedNodes(query *string) (nodes []string, err error) {
+	nodes = make([]string, 0)
+	pNodes, err := t.netbox.LoadPlannedNodes(query, &t.cfg.Region)
 	if err != nil {
 		return
 	}
-	ctxLogger := log.WithFields(log.Fields{
-		"node": node,
-	})
-	tasks = make([]func(n *model.Node) error, 0)
-	tasks = append(tasks, c.Openstack.CreateDNSRecords)
-	if diag {
-		d, err := diagnostics.GetHardwareCheckTasks(*c.Redfish.ClientConfig, t.cfg, ctxLogger)
-		if err != nil {
-			return d, err
-		}
-		tasks = append(tasks, d...)
-		if t.cfg.Redfish.BootImage != nil && image {
-			tasks = append(tasks, c.Redfish.BootImage, t.GetTimeoutTask(10*time.Minute))
-		}
-		tasks = append(tasks, diagnostics.GetCableCheckTasks(t.cfg, ctxLogger)...)
+	for _, n := range pNodes {
+		nodes = append(nodes, *n.Name)
 	}
-	if bm {
-		if baremetal, err := c.Openstack.ServiceEnabled("ironic"); err == nil && baremetal {
-			tasks = append(tasks, c.Openstack.Create()...)
-			tasks = append(tasks, c.Openstack.DeploymentTest()...)
-			tasks = append(tasks, c.Openstack.Prepare)
-		}
-	}
-	if events {
-		tasks = append(tasks, c.Redfish.DeleteEventSubscription)
-	}
-
-	tasks = append(tasks, c.Netbox.Update)
 	return
 }
 
-func (t *Temper) GetTimeoutTask(d time.Duration) (task func(n *model.Node) error) {
-	task = func(n *model.Node) (err error) {
+func TimeoutTask(d time.Duration) func() (err error) {
+	return func() (err error) {
 		time.Sleep(d)
 		return
 	}
-	return
 }
 
-func (t *Temper) initErrorHandler() {
-	for {
-		select {
-		case err := <-t.Errors:
-			if serr, ok := err.(*TemperError); ok {
-				log.Errorf("error tempering node %s. err: %s", serr.Node.Name, serr.Err)
-				c, err := t.GetClients(serr.Node.Name)
-				if serr.Node.InstanceUUID != "" {
-					if err = c.Openstack.DeleteTestInstance(serr.Node); err != nil {
-						log.Error("cannot delete compute instance %s. err: %s", serr.Node.InstanceUUID, err.Error())
-					}
-				}
-				if err = c.Openstack.DeleteNode(serr.Node); err != nil {
-					log.Errorf("cannot delete node %s. err: %s", serr.Node.Name, err.Error())
-				}
-				if t.netboxStatus {
-					if err = c.Netbox.SetStatusFailed(serr.Node, serr.Err); err != nil {
-						log.Errorf("cannot set node %s status in netbox. err: %s", serr.Node.Name, err.Error())
-					}
-				}
-
-			} else {
-				log.Error(err.Error())
-			}
-		case <-t.ctx.Done():
-			return
+func (t *Temper) cleanupHandler(n *node.Node, netboxSts bool) {
+	for _, t := range n.Tasks {
+		if t.Error != nil {
+			log.Errorf("error tempering node %s. task: %s err: %s", n.Name, t.Name, t.Error.Error())
 		}
 	}
+	if n.InstanceUUID != "" {
+		if err := n.DeleteTestInstance(); err != nil {
+			log.Error("cannot delete compute instance %s. err: %s", n.InstanceUUID, err.Error())
+		}
+	}
+	if err := n.DeleteNode(); err != nil {
+		log.Errorf("cannot delete node %s. err: %s", n.Name, err.Error())
+	}
+	if netboxSts {
+		if err := n.SetStatus(); err != nil {
+			log.Errorf("cannot set node %s status in netbox. err: %s", n.Name, err.Error())
+		}
+	}
+
 }

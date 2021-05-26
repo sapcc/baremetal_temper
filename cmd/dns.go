@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/sapcc/baremetal_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/node"
 	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -15,7 +15,7 @@ var dnsCmd = &cobra.Command{
 	Short: "interact with dns service",
 }
 
-var createDns = &cobra.Command{
+var createDNS = &cobra.Command{
 	Use:   "create",
 	Short: "creates a nodes dns records based on netbox info",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -23,13 +23,8 @@ var createDns = &cobra.Command{
 		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
-				c, err := t.GetClients(n)
-				if err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
 				wg.Add(1)
-				go temperNode(t, n, []func(n *model.Node) error{c.Openstack.CreateDNSRecords}, &wg)
+				go createDNSExec(n, t, &wg)
 			}
 		}
 		wg.Wait()
@@ -37,7 +32,16 @@ var createDns = &cobra.Command{
 	},
 }
 
+func createDNSExec(n string, t *temper.Temper, wg *sync.WaitGroup) {
+	defer wg.Done()
+	node, err := node.New(n, cfg)
+	if err != nil {
+		log.Errorf("error node %s: %s", n, err.Error())
+	}
+	node.CreateDNSRecords()
+}
+
 func init() {
-	dnsCmd.AddCommand(createDns)
+	dnsCmd.AddCommand(createDNS)
 	rootCmd.AddCommand(dnsCmd)
 }

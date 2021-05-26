@@ -1,11 +1,7 @@
 package cmd
 
 import (
-	"context"
-	"sync"
-
-	"github.com/sapcc/baremetal_temper/pkg/model"
-	"github.com/sapcc/baremetal_temper/pkg/temper"
+	"github.com/sapcc/baremetal_temper/pkg/node"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/spf13/cobra"
@@ -25,26 +21,20 @@ var create = &cobra.Command{
 	Use:   "create",
 	Short: "Triggers a baremetal node create",
 	Run: func(cmd *cobra.Command, args []string) {
-		var wg sync.WaitGroup
-		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
-				c, err := t.GetClients(n)
+				nd, err := node.New(n, cfg)
 				if err != nil {
 					log.Errorf("error node %s: %s", n, err.Error())
 					continue
 				}
-				wg.Add(1)
-				tasks := make([]func(n *model.Node) error, 0)
-				tasks = append(tasks, c.Openstack.Create()...)
+				nd.Create()
 				if testDeployment {
-					tasks = append(tasks, c.Openstack.DeploymentTest()...)
+					nd.DeployTestInstance()
 				}
-				tasks = append(tasks, c.Openstack.Prepare)
-				go temperNode(t, n, tasks, &wg)
+				nd.Prepare()
 			}
 		}
-		wg.Wait()
 		log.Info("create completed")
 	},
 }
@@ -53,20 +43,17 @@ var test = &cobra.Command{
 	Use:   "test",
 	Short: "Triggers prepare and test tasks",
 	Run: func(cmd *cobra.Command, args []string) {
-		var wg sync.WaitGroup
-		t := temper.New(cfg, context.Background(), netboxStatus)
+		//var wg sync.WaitGroup
 		if len(nodes) > 0 {
 			for _, n := range nodes {
-				c, err := t.GetClients(n)
+				node, err := node.New(n, cfg)
 				if err != nil {
 					log.Errorf("error node %s: %s", n, err.Error())
 					continue
 				}
-				wg.Add(1)
-				go temperNode(t, n, c.Openstack.DeploymentTest(), &wg)
+				node.DeployTestInstance()
 			}
 		}
-		wg.Wait()
 		log.Info("test completed")
 	},
 }
@@ -75,20 +62,18 @@ var validate = &cobra.Command{
 	Use:   "validate",
 	Short: "Triggers a baremetal node validation",
 	Run: func(cmd *cobra.Command, args []string) {
-		var wg sync.WaitGroup
-		t := temper.New(cfg, context.Background(), netboxStatus)
+		//var wg sync.WaitGroup
 		if len(nodes) > 0 {
 			for _, n := range nodes {
-				c, err := t.GetClients(n)
+				node, err := node.New(n, cfg)
 				if err != nil {
 					log.Errorf("error node %s: %s", n, err.Error())
 					continue
 				}
-				wg.Add(1)
-				go temperNode(t, n, []func(n *model.Node) error{c.Openstack.Validate}, &wg)
+				node.Validate()
 			}
 		}
-		wg.Wait()
+		//wg.Wait()
 		log.Info("validate completed")
 	},
 }
@@ -97,20 +82,18 @@ var prepare = &cobra.Command{
 	Use:   "prepare",
 	Short: "Triggers a baremetal node preparation",
 	Run: func(cmd *cobra.Command, args []string) {
-		var wg sync.WaitGroup
-		t := temper.New(cfg, context.Background(), netboxStatus)
+		//var wg sync.WaitGroup
 		if len(nodes) > 0 {
 			for _, n := range nodes {
-				c, err := t.GetClients(n)
+				node, err := node.New(n, cfg)
 				if err != nil {
 					log.Errorf("error node %s: %s", n, err.Error())
 					continue
 				}
-				wg.Add(1)
-				go temperNode(t, n, []func(n *model.Node) error{c.Openstack.Prepare}, &wg)
+				node.Prepare()
 			}
 		}
-		wg.Wait()
+		//wg.Wait()
 		log.Info("validate completed")
 	},
 }

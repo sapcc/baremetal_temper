@@ -19,6 +19,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/sapcc/baremetal_temper/pkg/node"
 	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -37,44 +38,38 @@ var complete = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
 		t := temper.New(cfg, context.Background(), netboxStatus)
-		if len(nodes) > 0 {
-			for _, n := range nodes {
-				wg.Add(1)
-				go execComplete(t, n, &wg)
-			}
+		err := loadNodes(t)
+		if err != nil {
+			log.Errorf("error loading nodes: %s", err.Error())
+			return
+		}
+		if len(nodes) == 0 {
+			log.Errorf("no nodes given")
+			return
+		}
+		for _, n := range nodes {
+			wg.Add(1)
+			go execComplete(t, n, &wg)
 		}
 		wg.Wait()
 		log.Info("command complete")
 	},
 }
 
-func execComplete(t *temper.Temper, node string, wg *sync.WaitGroup) {
+func execComplete(t *temper.Temper, name string, wg *sync.WaitGroup) {
 	defer wg.Done()
-	c, err := t.GetClients(node)
+	n, err := node.New(name, cfg)
 	if err != nil {
-		log.Errorf("error node %s: %s", node, err.Error())
+		log.Errorf("error node %s: %s", name, err.Error())
 		return
 	}
-	n, err := t.LoadNodeInfos(node)
-	if err != nil {
-		log.Errorf("error node %s: %s", node, err.Error())
-		return
-	}
-	tasks, err := t.GetAllTemperTasks(n.Name, diag, baremetal, redfishEvents, bootImg)
-	if err != nil {
-		log.Errorf("error node %s: %s", node, err.Error())
-		return
-	}
-	if err = t.TemperNode(&n, tasks); err != nil {
-		log.Errorf("error node %s: %s", node, err.Error())
-		return
-	}
+	t.SetAllTemperTasks(n, diag, baremetal, redfishEvents, bootImg)
 
-	if err = c.Netbox.Update(&n); err != nil {
-		log.Errorf("error node %s: %s", node, err.Error())
+	if err = t.TemperNode(n, netboxStatus); err != nil {
+		log.Errorf("error node %s: %s", name, err.Error())
 		return
 	}
-	log.Infof("node %s done", node)
+	log.Infof("node %s done", name)
 }
 
 func init() {

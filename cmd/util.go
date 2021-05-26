@@ -18,20 +18,26 @@ package cmd
 import (
 	"sync"
 
-	"github.com/sapcc/baremetal_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/node"
 	"github.com/sapcc/baremetal_temper/pkg/temper"
 
 	log "github.com/sirupsen/logrus"
 )
 
-func temperNode(t *temper.Temper, node string, tasks []func(n *model.Node) error, wg *sync.WaitGroup) {
+func temperNode(t *temper.Temper, n *node.Node, wg *sync.WaitGroup) {
 	defer wg.Done()
-	n, err := t.LoadNodeInfos(node)
-	if err != nil {
-		log.Error(err)
-		return
+	if err := t.TemperNode(n, netboxStatus); err != nil {
+		log.Errorf("error node %s: %s", n.Name, err.Error())
 	}
-	if err = t.TemperNode(&n, tasks); err != nil {
-		log.Errorf("error node %s: %s", node, err.Error())
+}
+
+func loadNodes(t *temper.Temper) (err error) {
+	if nodeQuery != "" {
+		nodes, err = t.LoadPlannedNodes(&nodeQuery)
+		if err != nil {
+			log.Errorf("error loading nodes: %s", err.Error())
+			return
+		}
 	}
+	return
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/sapcc/baremetal_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/node"
 	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -23,18 +23,22 @@ var bootImage = &cobra.Command{
 		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
-				c, err := t.GetClients(n)
-				if err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
 				wg.Add(1)
-				go temperNode(t, n, []func(n *model.Node) error{c.Redfish.BootImage}, &wg)
+				go bootImageExec(n, t, &wg)
 			}
 		}
 		wg.Wait()
 		log.Info("boot image completed")
 	},
+}
+
+func bootImageExec(n string, t *temper.Temper, wg *sync.WaitGroup) {
+	defer wg.Done()
+	node, err := node.New(n, cfg)
+	if err != nil {
+		log.Errorf("error node %s: %s", n, err.Error())
+	}
+	node.BootImage()
 }
 
 func init() {

@@ -1,21 +1,14 @@
 package clients
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net"
 	"os"
-	"strconv"
-	"text/template"
 
 	"github.com/sapcc/baremetal_temper/pkg/config"
-	"github.com/sapcc/baremetal_temper/pkg/model"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/apiversions"
-	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/services"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/images"
@@ -28,16 +21,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-//Client is
+//OpenstackClient is
 type OpenstackClient struct {
-	baremetalClient *gophercloud.ServiceClient
-	dnsClient       *gophercloud.ServiceClient
-	computeClient   *gophercloud.ServiceClient
-	keystoneClient  *gophercloud.ServiceClient
-	networkClient   *gophercloud.ServiceClient
-	domain          string
-	log             *log.Entry
-	cfg             config.Config
+	Clients map[string]*gophercloud.ServiceClient
+	log     *log.Entry
+	cfg     config.Config
 }
 
 //NodeNotFoundError error for missing node
@@ -50,53 +38,77 @@ func (n *NodeNotFoundError) Error() string {
 }
 
 //NewClient creates a new client containing different openstack-clients (baremetal, compute, dns)
-func NewClient(cfg config.Config, ctxLogger *log.Entry) (*OpenstackClient, error) {
-	provider, err := newProviderClient(cfg.Openstack)
+func NewClient(cfg config.Config, ctxLogger *log.Entry) *OpenstackClient {
+	return &OpenstackClient{cfg: cfg, log: ctxLogger, Clients: make(map[string]*gophercloud.ServiceClient, 0)}
+}
+
+func (oc *OpenstackClient) GetServiceClient(cfg config.Config, client string) (c *gophercloud.ServiceClient, err error) {
+	c, ok := oc.Clients[client]
+	if ok {
+		return
+	}
+	provider, err := NewProviderClient(cfg.Openstack)
 	if err != nil {
 		return nil, err
 	}
-
-	dc, err := openstack.NewDNSV2(provider, gophercloud.EndpointOpts{
-		Region: cfg.Region,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	cc, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
-		Region: cfg.Region,
-	})
-	if err != nil {
-		return nil, err
-	}
-	ic, err := openstack.NewIdentityV3(provider, gophercloud.EndpointOpts{
-		Region: cfg.Region,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	nc, err := openstack.NewNetworkV2(provider, gophercloud.EndpointOpts{
-		Region: cfg.Region,
-	})
-
-	bc, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
-		Region: cfg.Region,
-	})
-	if err == nil {
-		version, err := apiversions.Get(bc, "v1").Extract()
+	switch client {
+	case "compute":
+		c, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
+			Region: cfg.Region,
+		})
 		if err != nil {
 			return nil, err
 		}
-		bc.Microversion = version.Version
-	} else {
-		ctxLogger.Infof("baremetal service error: %s", err.Error())
+		oc.Clients["compute"] = c
+		return c, err
+	case "dns":
+		c, err := openstack.NewDNSV2(provider, gophercloud.EndpointOpts{
+			Region: cfg.Region,
+		})
+		if err != nil {
+			return nil, err
+		}
+		oc.Clients["dns"] = c
+		return c, err
+	case "identity":
+		c, err := openstack.NewIdentityV3(provider, gophercloud.EndpointOpts{
+			Region: cfg.Region,
+		})
+		if err != nil {
+			return nil, err
+		}
+		oc.Clients["identity"] = c
+		return c, err
+	case "network":
+		c, err := openstack.NewNetworkV2(provider, gophercloud.EndpointOpts{
+			Region: cfg.Region,
+		})
+		if err != nil {
+			return nil, err
+		}
+		oc.Clients["network"] = c
+		return c, err
+	case "baremetal":
+		c, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
+			Region: cfg.Region,
+		})
+		if err == nil {
+			version, err := apiversions.Get(c, "v1").Extract()
+			if err != nil {
+				return nil, err
+			}
+			c.Microversion = version.Version
+			oc.Clients["baremetal"] = c
+			return c, err
+		} else {
+			oc.log.Infof("baremetal service error: %s", err.Error())
+			return c, err
+		}
 	}
-
-	return &OpenstackClient{networkClient: nc, baremetalClient: bc, dnsClient: dc, computeClient: cc, keystoneClient: ic, domain: cfg.Domain, log: ctxLogger, cfg: cfg}, nil
+	return
 }
 
-func newProviderClient(i config.OpenstackAuth) (pc *gophercloud.ProviderClient, err error) {
+func NewProviderClient(i config.OpenstackAuth) (pc *gophercloud.ProviderClient, err error) {
 	os.Setenv("OS_USERNAME", i.User)
 	os.Setenv("OS_PASSWORD", i.Password)
 	os.Setenv("OS_PROJECT_NAME", i.ProjectName)
@@ -121,7 +133,7 @@ func newProviderClient(i config.OpenstackAuth) (pc *gophercloud.ProviderClient, 
 }
 
 func (c *OpenstackClient) ServiceEnabled(service string) (bool, error) {
-	a, err := iDservices.List(c.keystoneClient, iDservices.ListOpts{Name: service}).AllPages()
+	a, err := iDservices.List(c.Clients["identity"], iDservices.ListOpts{Name: service}).AllPages()
 	if err != nil {
 		return false, err
 	}
@@ -137,69 +149,16 @@ func (c *OpenstackClient) ServiceEnabled(service string) (bool, error) {
 }
 
 func (c *OpenstackClient) getAPIVersion() (*apiversions.APIVersion, error) {
-	return apiversions.Get(c.baremetalClient, "v1").Extract()
+	return apiversions.Get(c.Clients["baremetal"], "v1").Extract()
 }
 
-//CreateDNSRecords For creates a dns record for the given node if not exists
-func (c *OpenstackClient) CreateDNSRecords(n *model.Node) (err error) {
-	c.log.Debug("creating dns record")
-	opts := zones.ListOpts{
-		Name: c.domain + ".",
-	}
-	allPages, err := zones.List(c.dnsClient, opts).AllPages()
-	if err != nil {
-		return
-	}
-	allZones, err := zones.ExtractZones(allPages)
-	if err != nil || len(allZones) == 0 {
-		return fmt.Errorf("wrong dns zone")
-	}
-
-	for _, a := range n.IpamAddresses {
-		var ip net.IP
-		ip, _, err = net.ParseCIDR(*a.Address)
-		if err != nil {
-			return
-		}
-		log.Debug("Create A recordset:  ", ip.String(), allZones[0].ID, a.DNSName)
-
-		if err = c.createDNSRecord(ip.String(), allZones[0].ID, a.DNSName+".", "A"); err != nil {
-			return
-		}
-
-	}
-
-	for _, a := range n.IpamAddresses {
-		var arpa string
-		var ip net.IP
-		ip, _, err = net.ParseCIDR(*a.Address)
-		if err != nil {
-			return
-		}
-		arpa, err = reverseaddr(ip.String())
-		if err != nil {
-			return err
-		}
-		zoneID, err := c.createArpaZone(ip.String())
-		if err != nil {
-			return err
-		}
-		log.Debug("Create PTR recordset: ", a.DNSName, zoneID, arpa)
-		if err = c.createDNSRecord(a.DNSName+".", zoneID, arpa, "PTR"); err != nil {
-			return err
-		}
-	}
-
-	return
-}
-
-func (c *OpenstackClient) createArpaZone(ip string) (zoneID string, err error) {
+func (c *OpenstackClient) CreateArpaZone(ip string) (zoneID string, err error) {
 	arpaZone, err := reverseZone(ip)
 	if err != nil {
 		return
 	}
 
-	allPages, err := zones.List(c.dnsClient, zones.ListOpts{
+	allPages, err := zones.List(c.Clients["dns"], zones.ListOpts{
 		Name: arpaZone,
 	}).AllPages()
 	if err != nil {
@@ -211,7 +170,7 @@ func (c *OpenstackClient) createArpaZone(ip string) (zoneID string, err error) {
 	}
 
 	if len(allZones) == 0 {
-		z, err := zones.Create(c.dnsClient, zones.CreateOpts{
+		z, err := zones.Create(c.Clients["dns"], zones.CreateOpts{
 			Name:        arpaZone,
 			TTL:         3600,
 			Description: "An in-addr.arpa. zone for reverse lookups set up by baremetal temper",
@@ -227,8 +186,8 @@ func (c *OpenstackClient) createArpaZone(ip string) (zoneID string, err error) {
 	return
 }
 
-func (c *OpenstackClient) createDNSRecord(ip, zoneID, recordName, rType string) (err error) {
-	_, err = recordsets.Create(c.dnsClient, zoneID, recordsets.CreateOpts{
+func (c *OpenstackClient) CreateDNSRecord(ip, zoneID, recordName, rType string) (err error) {
+	_, err = recordsets.Create(c.Clients["dns"], zoneID, recordsets.CreateOpts{
 		Name:    recordName,
 		TTL:     3600,
 		Type:    rType,
@@ -243,8 +202,8 @@ func (c *OpenstackClient) createDNSRecord(ip, zoneID, recordName, rType string) 
 	return
 }
 
-func (c *OpenstackClient) getImageID(name string) (id string, err error) {
-	err = images.ListDetail(c.computeClient, images.ListOpts{Name: name}).EachPage(
+func (c *OpenstackClient) GetImageID(name string) (id string, err error) {
+	err = images.ListDetail(c.Clients["compute"], images.ListOpts{Name: name}).EachPage(
 		func(p pagination.Page) (bool, error) {
 			is, err := images.ExtractImages(p)
 			if err != nil {
@@ -262,8 +221,8 @@ func (c *OpenstackClient) getImageID(name string) (id string, err error) {
 	return
 }
 
-func (c *OpenstackClient) getFlavorID(name string) (id string, err error) {
-	err = flavors.ListDetail(c.computeClient, nil).EachPage(func(p pagination.Page) (bool, error) {
+func (c *OpenstackClient) GetFlavorID(name string) (id string, err error) {
+	err = flavors.ListDetail(c.Clients["compute"], nil).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
 			return true, err
@@ -279,69 +238,8 @@ func (c *OpenstackClient) getFlavorID(name string) (id string, err error) {
 	return
 }
 
-func (c *OpenstackClient) getRootDeviceSize(n *model.Node) (size int64, err error) {
-	size = n.InspectionData.RootDisk.Size / 1024 / 1024 / 1024
-	l := len(strconv.FormatInt(size, 10))
-	switch l {
-	case 3:
-		size = 100 * ((size + 90) / 100)
-	case 4:
-		size = 1000 * ((size + 900) / 1000)
-	}
-	return
-}
-
-func (c *OpenstackClient) getMatchingFlavorFor(n *model.Node) (name string, err error) {
-	mem := 0.1
-	disk := 0.2
-	cpu := 0.1
-	var fl flavors.Flavor
-	err = flavors.ListDetail(c.computeClient, nil).EachPage(func(p pagination.Page) (bool, error) {
-		fs, err := flavors.ExtractFlavors(p)
-		if err != nil {
-			return false, err
-		}
-		for _, f := range fs {
-			deltaMem := calcDelta(f.RAM, n.InspectionData.Inventory.Memory.PhysicalMb)
-			deltaDisk := calcDelta(f.Disk, int(n.InspectionData.RootDisk.Size/1024/1024/1024))
-			deltaCPU := calcDelta(f.VCPUs, n.InspectionData.Inventory.CPU.Count)
-			if deltaMem <= mem && deltaDisk <= disk && deltaCPU <= cpu {
-				mem = deltaMem
-				disk = deltaDisk
-				cpu = deltaCPU
-				name = f.Name
-				fl = f
-			}
-		}
-		return true, nil
-	})
-	if name == "" {
-		return name, fmt.Errorf("no matching flavor found for node")
-	}
-	n.InspectionData.Inventory.Memory.PhysicalMb = fl.RAM
-	n.InspectionData.RootDisk.Size = int64(fl.Disk)
-	n.InspectionData.Inventory.CPU.Count = fl.VCPUs
-	updateNode := nodes.UpdateOpts{}
-	updateNode = append(updateNode, nodes.UpdateOperation{
-		Op:    nodes.ReplaceOp,
-		Path:  "/properties/memory_mb",
-		Value: fl.RAM,
-	})
-	updateNode = append(updateNode, nodes.UpdateOperation{
-		Op:    nodes.ReplaceOp,
-		Path:  "/properties/local_gb",
-		Value: fl.Disk,
-	})
-	updateNode = append(updateNode, nodes.UpdateOperation{
-		Op:    nodes.ReplaceOp,
-		Path:  "/properties/cpus",
-		Value: fl.VCPUs,
-	})
-	return
-}
-
-func (c *OpenstackClient) getConductorZone(name string) (id string, err error) {
-	err = services.List(c.computeClient, services.ListOpts{Host: name}).EachPage(
+func (c *OpenstackClient) GetConductorZone(name string) (id string, err error) {
+	err = services.List(c.Clients["compute"], services.ListOpts{Host: name}).EachPage(
 		func(p pagination.Page) (bool, error) {
 			svs, err := services.ExtractServices(p)
 			if err != nil {
@@ -358,34 +256,8 @@ func (c *OpenstackClient) getConductorZone(name string) (id string, err error) {
 	return
 }
 
-func (c *OpenstackClient) getRules(n *model.Node) (r config.Rule, err error) {
-	var funcMap = template.FuncMap{
-		"imageToID":            c.getImageID,
-		"getMatchingFlavorFor": c.getMatchingFlavorFor,
-		"getRootDeviceSize":    c.getRootDeviceSize,
-	}
-
-	tmpl := template.New("rules.json").Funcs(funcMap)
-	t, err := tmpl.ParseFiles(c.cfg.RulesPath)
-	if err != nil {
-		return r, fmt.Errorf("Error parsing rules: %s", err.Error())
-	}
-
-	out := new(bytes.Buffer)
-	d := map[string]interface{}{
-		"node": n,
-	}
-	err = t.Execute(out, d)
-	if err != nil {
-
-	}
-	json.Unmarshal(out.Bytes(), &r)
-
-	return
-}
-
-func (c *OpenstackClient) getNetwork(name string) (n servers.Network, err error) {
-	pr, err := newProviderClient(c.cfg.Deployment.Openstack)
+func (c *OpenstackClient) GetNetwork(name string) (n servers.Network, err error) {
+	pr, err := NewProviderClient(c.cfg.Deployment.Openstack)
 	if err != nil {
 		return
 	}

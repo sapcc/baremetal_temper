@@ -12,6 +12,7 @@ import (
 var (
 	logLevel     int
 	nodes        []string
+	nodeQuery    string
 	netboxStatus bool
 	cfgFile      string
 	cfg          config.Config
@@ -20,9 +21,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "temper",
 	Short: "temper manages your node instances",
-	Long: `temper manages your node instances
-including the backend database.
-Supports warmups and backups.`,
+	Long:  `temper manages your node instances`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
@@ -32,8 +31,9 @@ func init() {
 	cobra.OnInitialize(InitConfig)
 	rootCmd.PersistentFlags().IntVarP(&logLevel, "log-level", "l", 5, "temper log level")
 	rootCmd.PersistentFlags().StringArrayVarP(&nodes, "nodes", "n", []string{}, "array of nodes")
+	rootCmd.PersistentFlags().StringVarP(&nodeQuery, "node-query", "q", "", "query to load nodes via netbox")
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/config.yaml)")
-	rootCmd.PersistentFlags().BoolVarP(&netboxStatus, "netbox-status", "u", false, "set to true if the netbox status should be updated")
+	rootCmd.PersistentFlags().BoolVarP(&netboxStatus, "netbox-status", "s", false, "set to true if the node's netbox status should be updated")
 
 	switch logLevel {
 	case 1:
@@ -57,7 +57,7 @@ func Execute() {
 	}
 }
 
-// initConfig reads in config file and ENV variables if set.
+// InitConfig reads in config file and ENV variables if set.
 func InitConfig() {
 	viper.SetDefault("region", "")
 	viper.BindEnv("region", "region")

@@ -10,8 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/sapcc/baremetal_temper/pkg/config"
-	"github.com/sapcc/baremetal_temper/pkg/model"
-	"github.com/sapcc/baremetal_temper/pkg/temper"
+	"github.com/sapcc/baremetal_temper/pkg/node"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,13 +18,13 @@ import (
 type Handler struct {
 	router *mux.Router
 	cfg    config.Config
-	Events chan model.Node
+	Events chan node.Node
 	l      *log.Entry
 }
 
 // New http handler
 func New(cfg config.Config, l *log.Entry) *Handler {
-	e := make(chan model.Node)
+	e := make(chan node.Node)
 	h := Handler{mux.NewRouter(), cfg, e, l}
 	return &h
 }
@@ -65,12 +64,7 @@ func (h *Handler) eventHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) execTasks(n string, u *url.URL, ctx context.Context) (err error) {
-	t := temper.New(h.cfg, ctx, true)
-	c, err := t.GetClients(n)
-	if err != nil {
-		return
-	}
-	no, err := t.LoadNodeInfos(n)
+	node, err := node.New(n, h.cfg)
 	if err != nil {
 		return
 	}
@@ -78,7 +72,7 @@ func (h *Handler) execTasks(n string, u *url.URL, ctx context.Context) (err erro
 	for _, v := range vals {
 		switch v {
 		case "sync_netbox":
-			c.Netbox.Update(&no)
+			node.Update()
 		case "cablecheck":
 		}
 	}

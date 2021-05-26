@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/config"
-	"github.com/sapcc/baremetal_temper/pkg/model"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
@@ -24,10 +23,10 @@ type launchBody struct {
 	Limit     string `json:"limit"`
 }
 
-func (a AwxClient) ExecTemplates(n *model.Node) (err error) {
+func (a AwxClient) ExecTemplates(host string) (err error) {
 	lb := launchBody{
 		Inventory: 94,
-		Limit:     n.Host,
+		Limit:     host,
 	}
 	err, j := a.execTemplate(lb, "")
 	if err != nil {

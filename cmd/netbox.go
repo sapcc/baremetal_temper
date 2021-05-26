@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/sapcc/baremetal_temper/pkg/model"
+	"github.com/sapcc/baremetal_temper/pkg/node"
 	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
 
@@ -31,18 +31,22 @@ var syncCmd = &cobra.Command{
 		t := temper.New(cfg, context.Background(), netboxStatus)
 		if len(nodes) > 0 {
 			for _, n := range nodes {
-				c, err := t.GetClients(n)
-				if err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
 				wg.Add(1)
-				go temperNode(t, n, []func(n *model.Node) error{c.Netbox.Update}, &wg)
+				go syncExec(n, t, &wg)
 			}
 		}
 		wg.Wait()
 		log.Info("sync completed")
 	},
+}
+
+func syncExec(n string, t *temper.Temper, wg *sync.WaitGroup) {
+	defer wg.Done()
+	nd, err := node.New(n, cfg)
+	if err != nil {
+		log.Errorf("error node %s: %s", n, err.Error())
+	}
+	nd.Update()
 }
 
 func init() {

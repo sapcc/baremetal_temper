@@ -1,22 +1,46 @@
-package model
+package node
 
 import (
 	"github.com/netbox-community/go-netbox/netbox/models"
+	"github.com/sapcc/baremetal_temper/pkg/clients"
+	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/stmcginnis/gofish/redfish"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Node struct {
-	Name           string
-	RemoteIP       string
-	PrimaryIP      string
-	UUID           string `json:"uuid"`
-	InstanceUUID   string
-	InstanceIPv4   string
-	Host           string
+	Name         string
+	RemoteIP     string
+	PrimaryIP    string
+	UUID         string `json:"uuid"`
+	InstanceUUID string
+	InstanceIPv4 string
+	Host         string
+	Tasks        map[int]*Task
+	Status       string
+	Clients      ApiClients
+
 	ResourceClass  string
 	InspectionData InspectonData
 	Interfaces     map[string]NodeInterface
 	IpamAddresses  []models.IPAddress
+
+	log *log.Entry
+	cfg config.Config
+	oc  *clients.OpenstackClient
+}
+
+type Task struct {
+	Exec     func() error
+	Name     string
+	Priority int
+	Error    error
+}
+
+type ApiClients struct {
+	Redfish *clients.RedfishClient
+	Netbox  *clients.NetboxClient
 }
 
 type NodeInterface struct {
@@ -73,6 +97,7 @@ type SystemVendor struct {
 	SerialNumber string `json:"serial_number"`
 	ProductName  string `json:"product_name"`
 	Manufacturer string `json:"manufacturer"`
+	Model        string
 }
 
 type Disk struct {
@@ -98,4 +123,52 @@ type CPU struct {
 	Frequency    string   `json:"frequency"`
 	Flags        []string `json:"flags"`
 	Architecture string   `json:"architecture"`
+}
+
+func New(name string, cfg config.Config) (n *Node, err error) {
+	ctxLogger := log.WithFields(log.Fields{
+		"node": name,
+	})
+	n = &Node{
+		Name:  name,
+		cfg:   cfg,
+		Tasks: make(map[int]*Task, 0),
+		log:   ctxLogger,
+		oc:    clients.NewClient(cfg, ctxLogger),
+	}
+	if cfg.Redfish.User != "" {
+		n.Clients.Redfish = clients.NewRedfishClient(cfg, ctxLogger)
+	}
+	if cfg.Netbox.Token != "" {
+		n.Clients.Netbox, err = clients.NewNetboxClient(cfg, ctxLogger)
+		if err != nil {
+			return
+		}
+	}
+	if err = n.loadInfos(); err != nil {
+		return
+	}
+	return
+}
+
+func (n *Node) GetOrCreateTask(tn int, name string) (t *Task) {
+	t, ok := n.Tasks[tn]
+	if !ok {
+		n.Tasks[tn] = &Task{Name: name}
+	}
+	return n.Tasks[tn]
+}
+
+func (n *Node) loadInfos() (err error) {
+	if err = n.LoadIpamAddresses(); err != nil {
+		return
+	}
+	n.Clients.Redfish.SetEndpoint(n.RemoteIP)
+	if err = n.LoadInventory(); err != nil {
+		return
+	}
+	if err = n.LoadInterfaces(); err != nil {
+		return
+	}
+	return
 }
