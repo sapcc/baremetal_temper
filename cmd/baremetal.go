@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"sync"
+
 	"github.com/sapcc/baremetal_temper/pkg/node"
 	log "github.com/sirupsen/logrus"
 
@@ -21,6 +23,12 @@ var create = &cobra.Command{
 	Use:   "create",
 	Short: "Triggers a baremetal node create",
 	Run: func(cmd *cobra.Command, args []string) {
+		var wg sync.WaitGroup
+		err := loadNodes()
+		if err != nil {
+			log.Errorf("error loading nodes: %s", err.Error())
+			return
+		}
 		if len(nodes) > 0 {
 			for _, n := range nodes {
 				nd, err := node.New(n, cfg)
@@ -28,22 +36,12 @@ var create = &cobra.Command{
 					log.Errorf("error node %s: %s", n, err.Error())
 					continue
 				}
-				if err = nd.Create(); err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
-				if testDeployment {
-					if err = nd.DeployTestInstance(); err != nil {
-						log.Errorf("error node %s: %s", n, err.Error())
-						continue
-					}
-				}
-				if err = nd.Prepare(); err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
+				nd.AddBaremetalCreateTasks()
+				wg.Add(1)
+				go nd.Temper(netboxStatus, &wg)
 			}
 		}
+		wg.Wait()
 		log.Info("create completed")
 	},
 }
@@ -52,20 +50,23 @@ var test = &cobra.Command{
 	Use:   "test",
 	Short: "Triggers prepare and test tasks",
 	Run: func(cmd *cobra.Command, args []string) {
-		//var wg sync.WaitGroup
-		if len(nodes) > 0 {
-			for _, n := range nodes {
-				node, err := node.New(n, cfg)
-				if err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
-				if err = node.DeployTestInstance(); err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
-			}
+		var wg sync.WaitGroup
+		err := loadNodes()
+		if err != nil {
+			log.Errorf("error loading nodes: %s", err.Error())
+			return
 		}
+		for _, n := range nodes {
+			node, err := node.New(n, cfg)
+			if err != nil {
+				log.Errorf("error node %s: %s", n, err.Error())
+				continue
+			}
+			wg.Add(1)
+			node.AddDeploymentTestTasks()
+			node.Temper(netboxStatus, &wg)
+		}
+		wg.Wait()
 		log.Info("test completed")
 	},
 }
@@ -74,21 +75,24 @@ var validate = &cobra.Command{
 	Use:   "validate",
 	Short: "Triggers a baremetal node validation",
 	Run: func(cmd *cobra.Command, args []string) {
-		//var wg sync.WaitGroup
-		if len(nodes) > 0 {
-			for _, n := range nodes {
-				node, err := node.New(n, cfg)
-				if err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
-				if err = node.Validate(); err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
-			}
+		var wg sync.WaitGroup
+		err := loadNodes()
+		if err != nil {
+			log.Errorf("error loading nodes: %s", err.Error())
+			return
 		}
-		//wg.Wait()
+
+		for _, n := range nodes {
+			node, err := node.New(n, cfg)
+			if err != nil {
+				log.Errorf("error node %s: %s", n, err.Error())
+				continue
+			}
+			node.AddTask(100, "validate_node").Exec = node.Validate
+			wg.Add(1)
+			go node.Temper(netboxStatus, &wg)
+		}
+		wg.Wait()
 		log.Info("validate completed")
 	},
 }
@@ -97,21 +101,23 @@ var prepare = &cobra.Command{
 	Use:   "prepare",
 	Short: "Triggers a baremetal node preparation",
 	Run: func(cmd *cobra.Command, args []string) {
-		//var wg sync.WaitGroup
-		if len(nodes) > 0 {
-			for _, n := range nodes {
-				node, err := node.New(n, cfg)
-				if err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
-				if err = node.Prepare(); err != nil {
-					log.Errorf("error node %s: %s", n, err.Error())
-					continue
-				}
-			}
+		var wg sync.WaitGroup
+		err := loadNodes()
+		if err != nil {
+			log.Errorf("error loading nodes: %s", err.Error())
+			return
 		}
-		//wg.Wait()
+		for _, n := range nodes {
+			node, err := node.New(n, cfg)
+			if err != nil {
+				log.Errorf("error node %s: %s", n, err.Error())
+				continue
+			}
+			node.AddTask(100, "prepare_node").Exec = node.Prepare
+			wg.Add(1)
+			go node.Temper(netboxStatus, &wg)
+		}
+		wg.Wait()
 		log.Info("validate completed")
 	},
 }

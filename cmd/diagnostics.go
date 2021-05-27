@@ -1,12 +1,10 @@
 package cmd
 
 import (
-	"context"
 	"sync"
 	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/node"
-	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -21,30 +19,22 @@ var hardwareCheck = &cobra.Command{
 	Short: "runs a vendor specific hardware check",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
-		t := temper.New(cfg, context.Background(), netboxStatus)
-		if len(nodes) > 0 {
-			for _, n := range nodes {
-				wg.Add(1)
-				go hardwareCheckExec(n, t, &wg)
+		if err := loadNodes(); err != nil {
+			log.Errorf("error loading nodes: %s", err.Error())
+		}
+		for _, n := range nodes {
+			node, err := node.New(n, cfg)
+			if err != nil {
+				log.Errorf("error node %s: %s", n, err.Error())
+				return
 			}
+			node.AddTask(1, "hardware_check").Exec = node.RunHardwareChecks
+			wg.Add(1)
+			go node.Temper(netboxStatus, &wg)
 		}
 		wg.Wait()
 		log.Info("check completed")
 	},
-}
-
-func hardwareCheckExec(n string, t *temper.Temper, wg *sync.WaitGroup) {
-	defer wg.Done()
-	node, err := node.New(n, cfg)
-	if err != nil {
-		log.Errorf("error node %s: %s", n, err.Error())
-		return
-	}
-	err = node.RunHardwareChecks()
-	if err != nil {
-		log.Errorf("error node %s: %s", n, err.Error())
-		return
-	}
 }
 
 var cableCheck = &cobra.Command{
@@ -52,35 +42,27 @@ var cableCheck = &cobra.Command{
 	Short: "runs a cable check (lldp)",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
-		t := temper.New(cfg, context.Background(), netboxStatus)
-		if len(nodes) > 0 {
-			for _, n := range nodes {
-				wg.Add(1)
-				go cableCheckExec(n, t, &wg)
+		if err := loadNodes(); err != nil {
+			log.Errorf("error loading nodes: %s", err.Error())
+		}
+		for _, n := range nodes {
+			nd, err := node.New(n, cfg)
+			if err != nil {
+				log.Errorf("error node %s: %s", n, err.Error())
+				continue
 			}
+			if bootImg && cfg.Redfish.BootImage != nil {
+				nd.AddTask(100, "boot_image").Exec = nd.BootImage
+				nd.AddTask(80, "boot_image_wait").Exec = node.TimeoutTask(5 * time.Minute)
+			}
+			nd.AddTask(70, "arista_check").Exec = nd.RunAristaCheck
+			nd.AddTask(60, "aci_check").Exec = nd.RunACICheck
+			wg.Add(1)
+			go nd.Temper(netboxStatus, &wg)
 		}
 		wg.Wait()
 		log.Info("cable check completed")
 	},
-}
-
-func cableCheckExec(n string, t *temper.Temper, wg *sync.WaitGroup) {
-	defer wg.Done()
-	node, err := node.New(n, cfg)
-	if err != nil {
-		log.Errorf("error node %s: %s", n, err.Error())
-		return
-	}
-	if bootImg && cfg.Redfish.BootImage != nil {
-		node.BootImage()
-		time.Sleep(5 * time.Minute)
-	}
-	if err = node.RunAristaCheck(); err != nil {
-		log.Errorf("error node %s: %s", n, err.Error())
-	}
-	if err = node.RunACICheck(); err != nil {
-		log.Errorf("error node %s: %s", n, err.Error())
-	}
 }
 
 func init() {

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sapcc/baremetal_temper/pkg/node"
 	"github.com/sapcc/baremetal_temper/pkg/server"
@@ -31,18 +32,22 @@ type Scheduler struct {
 	log             *log.Entry
 	server          *server.Handler
 	tp              *temper.Temper
+	nc              *clients.Netbox
 	sync.RWMutex
 }
 
 // New Scheduler Instance
 func New(ctx context.Context, cfg config.Config, opts config.Options) (s Scheduler, err error) {
-	t := temper.New(cfg, ctx, true)
+	ctxLogger := log.WithFields(log.Fields{
+		"temper": "scheduler",
+	})
+	n, err := clients.NewNetbox(cfg, ctxLogger)
+	if err != nil {
+		return
+	}
 	log.SetFormatter(&log.TextFormatter{
 		DisableColors: false,
 		FullTimestamp: false,
-	})
-	ctxLogger := log.WithFields(log.Fields{
-		"scheduler": "temper",
 	})
 
 	s = Scheduler{
@@ -51,7 +56,7 @@ func New(ctx context.Context, cfg config.Config, opts config.Options) (s Schedul
 		nodesInProgress: make(map[string]struct{}),
 		log:             ctxLogger,
 		opts:            opts,
-		tp:              t,
+		nc:              n,
 	}
 	return
 }
@@ -90,6 +95,7 @@ loop:
 
 func (r *Scheduler) temper(n string) {
 	var err error
+	var wg sync.WaitGroup
 	r.log.Infof("tempering node %s", n)
 	r.Lock()
 	if _, ok := r.nodesInProgress[n]; ok {
@@ -104,8 +110,8 @@ func (r *Scheduler) temper(n string) {
 		r.log.Error(err)
 		return
 	}
-	r.tp.SetAllTemperTasks(ni, r.opts.Diagnostics, r.opts.Baremetal, r.opts.RedfishEvents, true)
-	r.tp.TemperNode(ni, true)
+	ni.AddAllTemperTasks(r.opts.Diagnostics, r.opts.Baremetal, r.opts.RedfishEvents, true)
+	ni.Temper(true, &wg)
 	r.log.Infof("finished tempering node: %s", n)
 	r.Lock()
 	delete(r.nodesInProgress, n)
@@ -116,7 +122,7 @@ func (r *Scheduler) loadNodes() (nodes []string, err error) {
 	targets := make([]NetboxDiscovery, 0)
 	nodes = make([]string, 0)
 	if r.cfg.NetboxNodesPath == "" {
-		nodes, err = r.tp.LoadPlannedNodes(nil)
+		nodes, err = r.nc.LoadPlannedNodes(r.cfg.NetboxQuery, &r.cfg.Region)
 		if err != nil {
 			return
 		}

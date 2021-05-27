@@ -7,19 +7,18 @@ import (
 	runtimeclient "github.com/go-openapi/runtime/client"
 	netboxclient "github.com/netbox-community/go-netbox/netbox/client"
 	"github.com/netbox-community/go-netbox/netbox/client/dcim"
-	"github.com/netbox-community/go-netbox/netbox/models"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	log "github.com/sirupsen/logrus"
 )
 
 //NetboxClient is ..
-type NetboxClient struct {
+type Netbox struct {
 	Client *netboxclient.NetBoxAPI
 	log    *log.Entry
 }
 
 //NewNetboxClient creates netbox client instance
-func NewNetboxClient(cfg config.Config, ctxLogger *log.Entry) (n *NetboxClient, err error) {
+func NewNetbox(cfg config.Config, ctxLogger *log.Entry) (n *Netbox, err error) {
 	tlsClient, err := runtimeclient.TLSClient(runtimeclient.TLSClientOptions{InsecureSkipVerify: true})
 	if err != nil {
 		return
@@ -27,7 +26,7 @@ func NewNetboxClient(cfg config.Config, ctxLogger *log.Entry) (n *NetboxClient, 
 
 	transport := runtimeclient.NewWithClient(cfg.Netbox.Host, netboxclient.DefaultBasePath, []string{"https"}, tlsClient)
 	transport.DefaultAuthentication = runtimeclient.APIKeyAuth("Authorization", "header", fmt.Sprintf("Token %v", cfg.Netbox.Token))
-	n = &NetboxClient{
+	n = &Netbox{
 		Client: netboxclient.New(transport, nil),
 		log:    ctxLogger,
 	}
@@ -35,7 +34,8 @@ func NewNetboxClient(cfg config.Config, ctxLogger *log.Entry) (n *NetboxClient, 
 }
 
 //LoadPlannedNodes loads all nodes in status planned
-func (n *NetboxClient) LoadPlannedNodes(query *string, region *string) (nodes []*models.DeviceWithConfigContext, err error) {
+func (n *Netbox) LoadPlannedNodes(query *string, region *string) (nodes []string, err error) {
+	nodes = make([]string, 0)
 	role := "server"
 	status := "planned"
 
@@ -50,6 +50,8 @@ func (n *NetboxClient) LoadPlannedNodes(query *string, region *string) (nodes []
 	if err != nil {
 		return
 	}
-	nodes = l.Payload.Results
+	for _, n := range l.Payload.Results {
+		nodes = append(nodes, *n.Name)
+	}
 	return
 }

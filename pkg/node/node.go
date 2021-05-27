@@ -1,6 +1,9 @@
 package node
 
 import (
+	"sort"
+	"sync"
+
 	"github.com/netbox-community/go-netbox/netbox/models"
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
@@ -39,8 +42,8 @@ type Task struct {
 }
 
 type ApiClients struct {
-	Redfish *clients.RedfishClient
-	Netbox  *clients.NetboxClient
+	Redfish *clients.Redfish
+	Netbox  *clients.Netbox
 }
 
 type NodeInterface struct {
@@ -137,26 +140,63 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 		oc:    clients.NewClient(cfg, ctxLogger),
 	}
 	if cfg.Redfish.User != "" {
-		n.Clients.Redfish = clients.NewRedfishClient(cfg, ctxLogger)
+		n.Clients.Redfish = clients.NewRedfish(cfg, ctxLogger)
 	}
 	if cfg.Netbox.Token != "" {
-		n.Clients.Netbox, err = clients.NewNetboxClient(cfg, ctxLogger)
+		n.Clients.Netbox, err = clients.NewNetbox(cfg, ctxLogger)
 		if err != nil {
 			return
 		}
 	}
-	if err = n.loadInfos(); err != nil {
-		return
-	}
 	return
 }
 
-func (n *Node) GetOrCreateTask(tn int, name string) (t *Task) {
-	t, ok := n.Tasks[tn]
-	if !ok {
-		n.Tasks[tn] = &Task{Name: name}
+func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
+	defer wg.Done()
+	prios := make([]int, 0, len(n.Tasks))
+	for k := range n.Tasks {
+		prios = append(prios, k)
 	}
-	return n.Tasks[tn]
+	sort.Ints(prios)
+	if err := n.loadInfos(); err != nil {
+		n.Status = "failed"
+		log.Errorf("failed to load %s info. err: %s", n.Name, err.Error())
+		return
+	}
+	for _, k := range prios {
+		if err := n.Tasks[k].Exec(); err != nil {
+			if _, ok := err.(*AlreadyExists); ok {
+				log.Infof("Node %s already exists, nothing to temper", n.Name)
+				break
+			}
+			n.Tasks[k].Error = err
+			n.Status = "failed"
+		}
+	}
+	n.cleanupHandler(netboxSts)
+	return
+}
+
+func (n *Node) cleanupHandler(netboxSts bool) {
+	for _, t := range n.Tasks {
+		if t.Error != nil {
+			log.Errorf("error tempering node %s. task: %s err: %s", n.Name, t.Name, t.Error.Error())
+		}
+	}
+	if n.InstanceUUID != "" {
+		if err := n.DeleteTestInstance(); err != nil {
+			log.Error("cannot delete compute instance %s. err: %s", n.InstanceUUID, err.Error())
+		}
+	}
+	if err := n.DeleteNode(); err != nil {
+		log.Errorf("cannot delete node %s. err: %s", n.Name, err.Error())
+	}
+	if netboxSts {
+		if err := n.SetStatus(); err != nil {
+			log.Errorf("cannot set node %s status in netbox. err: %s", n.Name, err.Error())
+		}
+	}
+
 }
 
 func (n *Node) loadInfos() (err error) {

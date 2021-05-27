@@ -16,28 +16,30 @@
 package cmd
 
 import (
-	"sync"
+	"fmt"
 
-	"github.com/sapcc/baremetal_temper/pkg/node"
-	"github.com/sapcc/baremetal_temper/pkg/temper"
+	"github.com/sapcc/baremetal_temper/pkg/clients"
 
 	log "github.com/sirupsen/logrus"
 )
 
-func temperNode(t *temper.Temper, n *node.Node, wg *sync.WaitGroup) {
-	defer wg.Done()
-	if err := t.TemperNode(n, netboxStatus); err != nil {
-		log.Errorf("error node %s: %s", n.Name, err.Error())
+func loadNodes() (err error) {
+	ctxLogger := log.WithFields(log.Fields{
+		"cmd": "temper",
+	})
+	n, err := clients.NewNetbox(cfg, ctxLogger)
+	if err != nil {
+		return
 	}
-}
-
-func loadNodes(t *temper.Temper) (err error) {
 	if nodeQuery != "" {
-		nodes, err = t.LoadPlannedNodes(&nodeQuery)
+		nodes, err = n.LoadPlannedNodes(&nodeQuery, &cfg.Region)
 		if err != nil {
 			log.Errorf("error loading nodes: %s", err.Error())
 			return
 		}
+	}
+	if len(nodes) == 0 {
+		return fmt.Errorf("no nodes provided")
 	}
 	return
 }

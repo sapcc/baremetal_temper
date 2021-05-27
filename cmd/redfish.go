@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"context"
 	"sync"
 
 	"github.com/sapcc/baremetal_temper/pkg/node"
-	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -20,25 +18,21 @@ var bootImage = &cobra.Command{
 	Short: "mounts and boots an image via redfish",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
-		t := temper.New(cfg, context.Background(), netboxStatus)
-		if len(nodes) > 0 {
-			for _, n := range nodes {
-				wg.Add(1)
-				go bootImageExec(n, t, &wg)
+		if err := loadNodes(); err != nil {
+			log.Errorf("error loading nodes: %s", err.Error())
+		}
+		for _, n := range nodes {
+			node, err := node.New(n, cfg)
+			if err != nil {
+				log.Errorf("error node %s: %s", n, err.Error())
 			}
+			wg.Add(1)
+			node.AddTask(100, "boot_image").Exec = node.BootImage
+			go node.Temper(netboxStatus, &wg)
 		}
 		wg.Wait()
 		log.Info("boot image completed")
 	},
-}
-
-func bootImageExec(n string, t *temper.Temper, wg *sync.WaitGroup) {
-	defer wg.Done()
-	node, err := node.New(n, cfg)
-	if err != nil {
-		log.Errorf("error node %s: %s", n, err.Error())
-	}
-	node.BootImage()
 }
 
 func init() {

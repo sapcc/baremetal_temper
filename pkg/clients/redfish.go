@@ -8,7 +8,7 @@ import (
 	"github.com/stmcginnis/gofish"
 )
 
-type RedfishClient struct {
+type Redfish struct {
 	ClientConfig *gofish.ClientConfig
 	Client       *gofish.APIClient
 	log          *log.Entry
@@ -16,8 +16,8 @@ type RedfishClient struct {
 }
 
 //NewRedfishClient creates redfish client
-func NewRedfishClient(cfg config.Config, ctxLogger *log.Entry) *RedfishClient {
-	return &RedfishClient{
+func NewRedfish(cfg config.Config, ctxLogger *log.Entry) *Redfish {
+	return &Redfish{
 		ClientConfig: &gofish.ClientConfig{
 			Endpoint:  fmt.Sprintf("https://%s", "dummy.net"),
 			Username:  cfg.Redfish.User,
@@ -31,7 +31,7 @@ func NewRedfishClient(cfg config.Config, ctxLogger *log.Entry) *RedfishClient {
 }
 
 //SetEndpoint sets the redfish api endpoint
-func (r *RedfishClient) SetEndpoint(remoteIP string) (err error) {
+func (r *Redfish) SetEndpoint(remoteIP string) (err error) {
 	if remoteIP == "" {
 		return fmt.Errorf("no remote ip address set")
 	}
@@ -39,7 +39,7 @@ func (r *RedfishClient) SetEndpoint(remoteIP string) (err error) {
 	return
 }
 
-func (r *RedfishClient) Connect() (err error) {
+func (r *Redfish) Connect() (err error) {
 	client, err := gofish.Connect(*r.ClientConfig)
 	if err != nil {
 		return
@@ -48,6 +48,6 @@ func (r *RedfishClient) Connect() (err error) {
 	return
 }
 
-func (r *RedfishClient) Logout() {
+func (r *Redfish) Logout() {
 	r.Client.Logout()
 }
