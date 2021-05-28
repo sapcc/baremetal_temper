@@ -22,7 +22,7 @@ import (
 )
 
 //OpenstackClient is
-type OpenstackClient struct {
+type Openstack struct {
 	Clients map[string]*gophercloud.ServiceClient
 	log     *log.Entry
 	cfg     config.Config
@@ -38,11 +38,11 @@ func (n *NodeNotFoundError) Error() string {
 }
 
 //NewClient creates a new client containing different openstack-clients (baremetal, compute, dns)
-func NewClient(cfg config.Config, ctxLogger *log.Entry) *OpenstackClient {
-	return &OpenstackClient{cfg: cfg, log: ctxLogger, Clients: make(map[string]*gophercloud.ServiceClient, 0)}
+func NewClient(cfg config.Config, ctxLogger *log.Entry) *Openstack {
+	return &Openstack{cfg: cfg, log: ctxLogger, Clients: make(map[string]*gophercloud.ServiceClient, 0)}
 }
 
-func (oc *OpenstackClient) GetServiceClient(cfg config.Config, client string) (c *gophercloud.ServiceClient, err error) {
+func (oc *Openstack) GetServiceClient(cfg config.Config, client string) (c *gophercloud.ServiceClient, err error) {
 	c, ok := oc.Clients[client]
 	if ok {
 		return
@@ -132,7 +132,7 @@ func NewProviderClient(i config.OpenstackAuth) (pc *gophercloud.ProviderClient, 
 	return pc, nil
 }
 
-func (c *OpenstackClient) ServiceEnabled(service string) (bool, error) {
+func (c *Openstack) ServiceEnabled(service string) (bool, error) {
 	a, err := iDservices.List(c.Clients["identity"], iDservices.ListOpts{Name: service}).AllPages()
 	if err != nil {
 		return false, err
@@ -148,11 +148,11 @@ func (c *OpenstackClient) ServiceEnabled(service string) (bool, error) {
 	return false, nil
 }
 
-func (c *OpenstackClient) getAPIVersion() (*apiversions.APIVersion, error) {
+func (c *Openstack) getAPIVersion() (*apiversions.APIVersion, error) {
 	return apiversions.Get(c.Clients["baremetal"], "v1").Extract()
 }
 
-func (c *OpenstackClient) CreateArpaZone(ip string) (zoneID string, err error) {
+func (c *Openstack) CreateArpaZone(ip string) (zoneID string, err error) {
 	arpaZone, err := reverseZone(ip)
 	if err != nil {
 		return
@@ -186,7 +186,7 @@ func (c *OpenstackClient) CreateArpaZone(ip string) (zoneID string, err error) {
 	return
 }
 
-func (c *OpenstackClient) CreateDNSRecord(ip, zoneID, recordName, rType string) (err error) {
+func (c *Openstack) CreateDNSRecord(ip, zoneID, recordName, rType string) (err error) {
 	_, err = recordsets.Create(c.Clients["dns"], zoneID, recordsets.CreateOpts{
 		Name:    recordName,
 		TTL:     3600,
@@ -202,7 +202,7 @@ func (c *OpenstackClient) CreateDNSRecord(ip, zoneID, recordName, rType string) 
 	return
 }
 
-func (c *OpenstackClient) GetImageID(name string) (id string, err error) {
+func (c *Openstack) GetImageID(name string) (id string, err error) {
 	err = images.ListDetail(c.Clients["compute"], images.ListOpts{Name: name}).EachPage(
 		func(p pagination.Page) (bool, error) {
 			is, err := images.ExtractImages(p)
@@ -221,7 +221,7 @@ func (c *OpenstackClient) GetImageID(name string) (id string, err error) {
 	return
 }
 
-func (c *OpenstackClient) GetFlavorID(name string) (id string, err error) {
+func (c *Openstack) GetFlavorID(name string) (id string, err error) {
 	err = flavors.ListDetail(c.Clients["compute"], nil).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
@@ -238,7 +238,7 @@ func (c *OpenstackClient) GetFlavorID(name string) (id string, err error) {
 	return
 }
 
-func (c *OpenstackClient) GetConductorZone(name string) (id string, err error) {
+func (c *Openstack) GetConductorZone(name string) (id string, err error) {
 	err = services.List(c.Clients["compute"], services.ListOpts{Host: name}).EachPage(
 		func(p pagination.Page) (bool, error) {
 			svs, err := services.ExtractServices(p)
@@ -256,7 +256,7 @@ func (c *OpenstackClient) GetConductorZone(name string) (id string, err error) {
 	return
 }
 
-func (c *OpenstackClient) GetNetwork(name string) (n servers.Network, err error) {
+func (c *Openstack) GetNetwork(name string) (n servers.Network, err error) {
 	pr, err := NewProviderClient(c.cfg.Deployment.Openstack)
 	if err != nil {
 		return

@@ -1,0 +1,28 @@
+{
+    "event": "created",
+    "timestamp": "2021-03-09 17:55:33.968016+00:00",
+    "model": "site",
+    "username": "jstretch",
+    "request_id": "fdbca812-3142-4783-b364-2e2bd5c16c6a",
+    "data": {
+        "id": 19,
+        "name": "Site 1",
+        "slug": "site-1",
+        "status": {
+            "value": "active",
+            "label": "Active",
+            "id": 1
+        },
+        "region": null
+    },
+    "snapshots": {
+        "prechange": null,
+        "postchange": {
+            "created": "2021-03-09",
+            "last_updated": "2021-03-09T17:55:33.851Z",
+            "name": "Site 1",
+            "slug": "site-1",
+            "status": "active"
+        }
+    }
+}

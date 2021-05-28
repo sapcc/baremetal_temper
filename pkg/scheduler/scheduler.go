@@ -13,7 +13,6 @@ import (
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sapcc/baremetal_temper/pkg/node"
 	"github.com/sapcc/baremetal_temper/pkg/server"
-	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -31,7 +30,6 @@ type Scheduler struct {
 	nodesInProgress map[string]struct{}
 	log             *log.Entry
 	server          *server.Handler
-	tp              *temper.Temper
 	nc              *clients.Netbox
 	sync.RWMutex
 }
@@ -68,7 +66,7 @@ func (r *Scheduler) Start(d time.Duration) {
 
 	if r.opts.RedfishEvents {
 		mux := http.NewServeMux()
-		r.server = server.New(r.cfg, r.log)
+		r.server = server.New(r.cfg, r.log, nil)
 		go http.ListenAndServe(":9090", mux)
 		go r.eventLoop()
 	}

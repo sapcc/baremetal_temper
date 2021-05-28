@@ -31,7 +31,7 @@ type Node struct {
 
 	log *log.Entry
 	cfg config.Config
-	oc  *clients.OpenstackClient
+	oc  *clients.Openstack
 }
 
 type Task struct {
@@ -133,11 +133,12 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 		"node": name,
 	})
 	n = &Node{
-		Name:  name,
-		cfg:   cfg,
-		Tasks: make(map[int]*Task, 0),
-		log:   ctxLogger,
-		oc:    clients.NewClient(cfg, ctxLogger),
+		Name:   name,
+		Status: "planned",
+		cfg:    cfg,
+		Tasks:  make(map[int]*Task, 0),
+		log:    ctxLogger,
+		oc:     clients.NewClient(cfg, ctxLogger),
 	}
 	if cfg.Redfish.User != "" {
 		n.Clients.Redfish = clients.NewRedfish(cfg, ctxLogger)
@@ -172,6 +173,9 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 			n.Tasks[k].Error = err
 			n.Status = "failed"
 		}
+	}
+	if n.Status != "failed" {
+		n.Status = "staged"
 	}
 	n.cleanupHandler(netboxSts)
 	return

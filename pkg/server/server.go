@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sapcc/baremetal_temper/pkg/node"
+	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,24 +21,33 @@ type Handler struct {
 	router *mux.Router
 	cfg    config.Config
 	Events chan node.Node
+	t      *temper.Temper
 	l      *log.Entry
 }
 
 // New http handler
-func New(cfg config.Config, l *log.Entry) *Handler {
+func New(cfg config.Config, l *log.Entry, t *temper.Temper) *Handler {
 	e := make(chan node.Node)
-	h := Handler{mux.NewRouter(), cfg, e, l}
+	h := Handler{mux.NewRouter(), cfg, e, t, l}
 	return &h
 }
 
-// RegisterEventRoutes for a node event endpoint
+// RegisterEventRoute for a node event endpoint
 func (h *Handler) RegisterEventRoute() {
 	h.router.HandleFunc("events/", h.eventHandler)
 }
 
-// RegisterEventRoutes for a node event endpoint
-func (h *Handler) RegisterApiRoutes() {
+// RegisterAPIRoutes for a node event endpoint
+func (h *Handler) RegisterAPIRoutes() {
 	h.router.HandleFunc("api/nodes/{node}/tasks/{task}", h.temperHandler).Methods("POST")
+	h.router.HandleFunc("api/nodes", h.nodeListHandler).Methods("GET")
+	if h.t != nil {
+		h.router.HandleFunc("api/nodes/webhook", h.webhookHandler).Methods("POST")
+	}
+}
+
+func (h *Handler) nodeListHandler(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(h.t.GetNodes())
 }
 
 func (h *Handler) temperHandler(w http.ResponseWriter, r *http.Request) {
@@ -49,6 +60,21 @@ func (h *Handler) temperHandler(w http.ResponseWriter, r *http.Request) {
 	if err := h.execTasks(n, r.URL, r.Context()); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+	fmt.Fprintf(w, "node: %v\n", n)
+}
+
+func (h *Handler) webhookHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	n, ok := vars["node"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	wb := webhookBody{}
+	if err := json.NewDecoder(r.Body).Decode(&wb); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	h.t.AddNodes([]*node.Node{})
 	fmt.Fprintf(w, "node: %v\n", n)
 }
 

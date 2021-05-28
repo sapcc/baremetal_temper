@@ -18,6 +18,7 @@ require (
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/viper v1.7.1
 	github.com/stmcginnis/gofish v0.7.0
+	github.com/stretchr/testify v1.6.1
 	github.com/vaughan0/go-ini v0.0.0-20130923145212-a98ad7ee00ec // indirect
 	gopkg.in/yaml.v2 v2.3.0
 	k8s.io/apimachinery v0.20.0
