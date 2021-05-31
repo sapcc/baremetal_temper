@@ -70,6 +70,10 @@ func (n *Node) Update() error {
 //LoadIpamAddresses loads all ipam addresse of a node
 func (n *Node) LoadIpamAddresses() (err error) {
 	n.log.Debug("calling netbox api to load ipam Addresses")
+	split := strings.Split(n.Name, "-")
+	if len(split) == 1 {
+		return fmt.Errorf("wrong node name format: node[001]-[block_name]")
+	}
 	block := strings.Split(n.Name, "-")[1]
 	name := strings.Split(n.Name, "-")[0]
 	var limit int64

@@ -44,7 +44,7 @@ func (t *Temper) cleanup() {
 	t.Lock()
 	defer t.Unlock()
 	for i, n := range t.nodes {
-		if n.Status == "staged" {
+		if n.Status != "staged" {
 			delete(t.nodes, i)
 		}
 	}

@@ -18,16 +18,24 @@ package temper
 
 import (
 	"testing"
+	"time"
 
+	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sapcc/baremetal_temper/pkg/node"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTemper(t *testing.T) {
 	tp := New(1)
-	assert.Equal(t, len(tp.GetNodes()), 0, "expects node node list to be 0")
-	tp.AddNodes([]*node.Node{{Name: "node01", Status: "active"}})
-	assert.Equal(t, len(tp.GetNodes()), 1, "expects node node list to be 1")
-	tp.AddNodes([]*node.Node{{Name: "node01", Status: "planned"}})
-	assert.Equal(t, len(tp.GetNodes()), 0, "expects node node list to be 0")
+	assert.Equal(t, 0, len(tp.GetNodes()), "expects node list to be 0")
+	n, _ := node.New("test1", config.Config{})
+	tp.AddNodes([]*node.Node{n})
+	assert.Equal(t, 1, len(tp.GetNodes()), "expects node list to be 1")
+	n, _ = node.New("test1", config.Config{})
+	n.Status = "planned"
+	tp.AddNodes([]*node.Node{n})
+	time.Sleep(1 * time.Millisecond)
+	assert.Equal(t, "failed", n.Status, "expects node status to be failed")
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, 0, len(tp.GetNodes()), "expects node list to be 0")
 }

@@ -39,6 +39,7 @@ type Task struct {
 	Name     string
 	Priority int
 	Error    error
+	Status   string
 }
 
 type ApiClients struct {
@@ -171,7 +172,10 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 				break
 			}
 			n.Tasks[k].Error = err
+			n.Tasks[k].Status = "failed"
 			n.Status = "failed"
+		} else {
+			n.Tasks[k].Status = "successful"
 		}
 	}
 	if n.Status != "failed" {
@@ -207,7 +211,9 @@ func (n *Node) loadInfos() (err error) {
 	if err = n.LoadIpamAddresses(); err != nil {
 		return
 	}
-	n.Clients.Redfish.SetEndpoint(n.RemoteIP)
+	if err = n.Clients.Redfish.SetEndpoint(n.RemoteIP); err != nil {
+		return
+	}
 	if err = n.LoadInventory(); err != nil {
 		return
 	}

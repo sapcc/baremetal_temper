@@ -53,7 +53,6 @@ func main() {
 		Handler:      s.Router, // Pass our instance of gorilla/mux in.
 	}
 
-	// Run our server in a goroutine so that it doesn't block.
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {
 			log.Println(err)

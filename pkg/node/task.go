@@ -34,6 +34,9 @@ func (n *Node) AddDeploymentTestTasks() {
 }
 
 func (n *Node) AddTask(p int, na string) (t *Task) {
+	if n.Tasks == nil {
+		n.Tasks = make(map[int]*Task, 0)
+	}
 	t, ok := n.Tasks[p]
 	if !ok {
 		n.Tasks[p] = &Task{Name: na}

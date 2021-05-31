@@ -18,7 +18,7 @@ import (
 
 // Handler for http requests
 type Handler struct {
-	router *mux.Router
+	Router *mux.Router
 	cfg    config.Config
 	Events chan node.Node
 	t      *temper.Temper
@@ -34,15 +34,15 @@ func New(cfg config.Config, l *log.Entry, t *temper.Temper) *Handler {
 
 // RegisterEventRoute for a node event endpoint
 func (h *Handler) RegisterEventRoute() {
-	h.router.HandleFunc("events/", h.eventHandler)
+	h.Router.HandleFunc("events/", h.eventHandler)
 }
 
 // RegisterAPIRoutes for a node event endpoint
 func (h *Handler) RegisterAPIRoutes() {
-	h.router.HandleFunc("api/nodes/{node}/tasks/{task}", h.temperHandler).Methods("POST")
-	h.router.HandleFunc("api/nodes", h.nodeListHandler).Methods("GET")
+	h.Router.HandleFunc("api/nodes/{node}/tasks/{task}", h.temperHandler).Methods("POST")
+	h.Router.HandleFunc("api/nodes", h.nodeListHandler).Methods("GET")
 	if h.t != nil {
-		h.router.HandleFunc("api/nodes/webhook", h.webhookHandler).Methods("POST")
+		h.Router.HandleFunc("api/nodes/webhook", h.webhookHandler).Methods("POST")
 	}
 }
 

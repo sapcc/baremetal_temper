@@ -16,6 +16,7 @@ type Options struct {
 	ConfigFilePath string
 	RulesFilePath  string
 	CheckInterval  time.Duration
+	Workers        int
 }
 
 type LogLevelValue struct {

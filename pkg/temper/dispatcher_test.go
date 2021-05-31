@@ -38,7 +38,7 @@ func TestDispatcher(t *testing.T) {
 
 	time.Sleep(1 * time.Millisecond)
 
-	assert.Equal(t, n.Status, "staged", "expects node job status to be 'staged'")
+	assert.Equal(t, n.Status, "failed", "expects node job status to be 'failed'")
 
 	d.Stop()
 	time.Sleep(1 * time.Millisecond)
