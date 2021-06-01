@@ -26,7 +26,7 @@ import (
 )
 
 //LoadInventory loads the node's inventory via it's redfish api
-func (n *Node) LoadInventory() (err error) {
+func (n *Node) loadInventory() (err error) {
 	n.log.Debug("calling redfish api to load node info")
 	if err = n.Clients.Redfish.Connect(); err != nil {
 		return

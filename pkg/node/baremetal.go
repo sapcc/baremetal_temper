@@ -167,14 +167,14 @@ func (n *Node) Prepare() (err error) {
 }
 
 //PowerOn powers on the node
-func (n *Node) PowerOn() (err error) {
+func (n *Node) changePowerState(powerState nodes.TargetPowerState) (err error) {
 	c, err := n.oc.GetServiceClient(n.cfg, "baremetal")
 	if err != nil {
 		return
 	}
 	n.log.Debug("powering on node")
 	powerStateOpts := nodes.PowerStateOpts{
-		Target: nodes.PowerOn,
+		Target: powerState,
 	}
 	r := nodes.ChangePowerState(c, n.UUID, powerStateOpts)
 
@@ -199,6 +199,16 @@ func (n *Node) PowerOn() (err error) {
 		return true, nil
 	})
 	return wait.Poll(5*time.Second, 30*time.Second, cf)
+}
+
+//PowerOn powers on the node
+func (n *Node) PowerOn() (err error) {
+	return n.changePowerState(nodes.PowerOn)
+}
+
+//PowerOff node off
+func (n *Node) PowerOff() (err error) {
+	return n.changePowerState(nodes.PowerOff)
 }
 
 //Validate calls the baremetal validate api
@@ -290,7 +300,6 @@ func (n *Node) Provide() (err error) {
 	return wait.Poll(5*time.Second, 30*time.Second, cfp)
 }
 
-//CheckCreated checks if node was created
 func (n *Node) getUUID() (err error) {
 	c, err := n.oc.GetServiceClient(n.cfg, "baremetal")
 	if err != nil {
@@ -458,8 +467,23 @@ func (n *Node) DeployTestInstance() (err error) {
 	return
 }
 
-func (n *Node) CreatePortGroup() (err error) {
-	//TODO: create port group
+func (n *Node) createPortGroup(name string) (id string, err error) {
+	if n.PortGroupUUID != "" {
+		return n.PortGroupUUID, err
+	}
+	pg := clients.PortGroup{
+		NodeUUID:                 n.UUID,
+		StandalonePortsSupported: true,
+		Name:                     name,
+		Address:                  n.InspectionData.Inventory.Interfaces[0].MacAddress, // use the MAC of the first interface
+		Mode:                     "802.3ad",
+		Properties:               map[string]interface{}{"miimon": 100},
+	}
+	id, err = n.oc.CreatePortGroup(pg)
+	if err != nil {
+		return
+	}
+	n.PortGroupUUID = id
 	return
 }
 

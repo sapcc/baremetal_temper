@@ -1,7 +1,9 @@
 package clients
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/sapcc/baremetal_temper/pkg/config"
@@ -21,11 +23,30 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-//OpenstackClient is
+//Openstack is
 type Openstack struct {
 	Clients map[string]*gophercloud.ServiceClient
 	log     *log.Entry
 	cfg     config.Config
+}
+
+type PortGroup struct {
+	UUID                     string                 `json:"uuid"`
+	NodeUUID                 string                 `json:"node_uuid"`
+	Name                     string                 `json:"name,omitempty"`
+	Address                  string                 `json:"address,omitempty"`
+	StandalonePortsSupported bool                   `json:"standalone_ports_supported,omitempty"`
+	Mode                     string                 `json:"mode,omitempty"`
+	Properties               map[string]interface{} `json:"properties,omitempty"`
+}
+
+// ToPortCreateMap assembles a request body based on the contents of a CreateOpts.
+func (opts PortGroup) ToPortCreateMap() (map[string]interface{}, error) {
+	body, err := gophercloud.BuildRequestBody(opts, "")
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
 }
 
 //NodeNotFoundError error for missing node
@@ -274,4 +295,21 @@ func (c *Openstack) GetNetwork(name string) (n servers.Network, err error) {
 	}
 	n.UUID = ns[0].ID
 	return
+}
+
+func (c *Openstack) CreatePortGroup(pg PortGroup) (uuid string, err error) {
+	u := c.Clients["baremetal"].ServiceURL("ports")
+	reqBody, err := pg.ToPortCreateMap()
+	if err != nil {
+		return
+	}
+	resp, err := c.Clients["baremetal"].Post(u, reqBody, nil, nil)
+	if resp.StatusCode != http.StatusCreated {
+		return uuid, fmt.Errorf("error creating port group: %s", err.Error())
+	}
+	r := PortGroup{}
+	if err = json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return
+	}
+	return r.UUID, err
 }

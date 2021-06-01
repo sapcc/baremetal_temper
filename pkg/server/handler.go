@@ -34,20 +34,23 @@ func New(cfg config.Config, l *log.Entry, t *temper.Temper) *Handler {
 
 // RegisterEventRoute for a node event endpoint
 func (h *Handler) RegisterEventRoute() {
-	h.Router.HandleFunc("events/", h.eventHandler)
+	h.Router.HandleFunc("/events/", h.eventHandler)
 }
 
 // RegisterAPIRoutes for a node event endpoint
 func (h *Handler) RegisterAPIRoutes() {
-	h.Router.HandleFunc("api/nodes/{node}/tasks/{task}", h.temperHandler).Methods("POST")
-	h.Router.HandleFunc("api/nodes", h.nodeListHandler).Methods("GET")
+	h.Router.HandleFunc("/api/nodes/{node}/tasks/{task}", h.temperHandler).Methods("POST")
+	h.Router.HandleFunc("/api/nodes", h.nodeListHandler).Methods("GET")
 	if h.t != nil {
-		h.Router.HandleFunc("api/nodes/webhook", h.webhookHandler).Methods("POST")
+		h.Router.HandleFunc("/api/nodes/webhook", h.webhookHandler).Methods("POST")
 	}
 }
 
 func (h *Handler) nodeListHandler(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(h.t.GetNodes())
+	if err := json.NewEncoder(w).Encode(h.t.GetNodes()); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *Handler) temperHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,18 +67,13 @@ func (h *Handler) temperHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) webhookHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	n, ok := vars["node"]
-	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
 	wb := webhookBody{}
 	if err := json.NewDecoder(r.Body).Decode(&wb); err != nil {
+		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 	}
-	h.t.AddNodes([]*node.Node{})
-	fmt.Fprintf(w, "node: %v\n", n)
+	n, _ := node.New("test", h.cfg)
+	h.t.AddNodes([]*node.Node{n})
 }
 
 func (h *Handler) eventHandler(w http.ResponseWriter, r *http.Request) {

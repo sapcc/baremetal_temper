@@ -68,7 +68,7 @@ func (n *Node) Update() error {
 }
 
 //LoadIpamAddresses loads all ipam addresse of a node
-func (n *Node) LoadIpamAddresses() (err error) {
+func (n *Node) loadIpamAddresses() (err error) {
 	n.log.Debug("calling netbox api to load ipam Addresses")
 	split := strings.Split(n.Name, "-")
 	if len(split) == 1 {
@@ -115,8 +115,8 @@ func (n *Node) LoadIpamAddresses() (err error) {
 func (n *Node) SetStatus() error {
 	errors := make([]string, 0)
 	for _, t := range n.Tasks {
-		if t.Error != nil {
-			m := fmt.Sprintf("%s failed: %s", t.Name, t.Error.Error())
+		if t.Error != "" {
+			m := fmt.Sprintf("%s failed: %s", t.Name, t.Error)
 			errors = append(errors, m)
 		}
 	}
@@ -161,7 +161,7 @@ func (n *Node) setStatusFailed(comments string) (err error) {
 }
 
 //LoadInterfaces loads additional node interface info
-func (n *Node) LoadInterfaces() (err error) {
+func (n *Node) loadInterfaces() (err error) {
 	n.log.Debug("calling netbox api to load node interfaces")
 	in, err := n.getInterfaces()
 	if err != nil {

@@ -93,6 +93,7 @@ func (n *Node) getRules() (r config.Rule, err error) {
 		"imageToID":            n.oc.GetImageID,
 		"getMatchingFlavorFor": n.getMatchingFlavorFor,
 		"getRootDeviceSize":    n.getRootDeviceSize,
+		"getPortGroupUUID":     n.createPortGroup,
 	}
 
 	tmpl := template.New("rules.json").Funcs(funcMap)

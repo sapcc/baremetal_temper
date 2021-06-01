@@ -13,33 +13,33 @@ import (
 )
 
 type Node struct {
-	Name         string `json:"name"`
-	RemoteIP     string
-	PrimaryIP    string
-	UUID         string `json:"uuid"`
-	InstanceUUID string
-	InstanceIPv4 string
-	Host         string
-	Tasks        map[int]*Task
-	Status       string `json:"status"`
-	Clients      ApiClients
+	Name          string        `json:"name"`
+	RemoteIP      string        `json:"remoteIP"`
+	PrimaryIP     string        `json:"primaryIP"`
+	UUID          string        `json:"uuid"`
+	InstanceUUID  string        `json:"instanceUUID"`
+	InstanceIPv4  string        `json:"instanceIP"`
+	Host          string        `json:"host"`
+	Tasks         map[int]*Task `json:"tasks"`
+	Status        string        `json:"status"`
+	Clients       ApiClients    `json:"-"`
+	PortGroupUUID string        `json:"portGroupUUID"`
 
-	ResourceClass  string
-	InspectionData InspectonData
-	Interfaces     map[string]NodeInterface
-	IpamAddresses  []models.IPAddress
+	ResourceClass  string                   `json:"-"`
+	InspectionData InspectonData            `json:"-"`
+	Interfaces     map[string]NodeInterface `json:"-"`
+	IpamAddresses  []models.IPAddress       `json:"-"`
 
-	log *log.Entry
-	cfg config.Config
-	oc  *clients.Openstack
+	log *log.Entry         `json:"-"`
+	cfg config.Config      `json:"-"`
+	oc  *clients.Openstack `json:"-"`
 }
 
 type Task struct {
-	Exec     func() error
-	Name     string
-	Priority int
-	Error    error
-	Status   string
+	Exec   func() error `json:"-"`
+	Name   string       `json:"name"`
+	Error  string       `json:"error"`
+	Status string       `json:"status"`
 }
 
 type ApiClients struct {
@@ -171,7 +171,7 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 				log.Infof("Node %s already exists, nothing to temper", n.Name)
 				break
 			}
-			n.Tasks[k].Error = err
+			n.Tasks[k].Error = err.Error()
 			n.Tasks[k].Status = "failed"
 			n.Status = "failed"
 		} else {
@@ -187,8 +187,8 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 
 func (n *Node) cleanupHandler(netboxSts bool) {
 	for _, t := range n.Tasks {
-		if t.Error != nil {
-			log.Errorf("error tempering node %s. task: %s err: %s", n.Name, t.Name, t.Error.Error())
+		if t.Error != "" {
+			log.Errorf("error tempering node %s. task: %s err: %s", n.Name, t.Name, t.Error)
 		}
 	}
 	if n.InstanceUUID != "" {
@@ -208,16 +208,16 @@ func (n *Node) cleanupHandler(netboxSts bool) {
 }
 
 func (n *Node) loadInfos() (err error) {
-	if err = n.LoadIpamAddresses(); err != nil {
+	if err = n.loadIpamAddresses(); err != nil {
 		return
 	}
 	if err = n.Clients.Redfish.SetEndpoint(n.RemoteIP); err != nil {
 		return
 	}
-	if err = n.LoadInventory(); err != nil {
+	if err = n.loadInventory(); err != nil {
 		return
 	}
-	if err = n.LoadInterfaces(); err != nil {
+	if err = n.loadInterfaces(); err != nil {
 		return
 	}
 	return

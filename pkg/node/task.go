@@ -25,6 +25,7 @@ func (n *Node) AddBaremetalCreateTasks() {
 	n.Tasks[70] = &Task{Name: "validate_ironic_node", Exec: n.Validate}
 	n.Tasks[60] = &Task{Name: "power_on_ironic_node", Exec: n.PowerOn}
 	n.Tasks[50] = &Task{Name: "provide_ironic_node", Exec: n.Provide}
+	n.Tasks[40] = &Task{Name: "power_off_ironic_node", Exec: n.PowerOff}
 }
 
 func (n *Node) AddDeploymentTestTasks() {

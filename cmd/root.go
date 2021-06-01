@@ -94,7 +94,7 @@ func InitConfig() {
 	viper.BindEnv("arista.password", "arista_password")
 	viper.SetDefault("arista.transport", "")
 	viper.BindEnv("arista.transport", "arista_transport")
-	viper.SetDefault("arista.port", "")
+	viper.SetDefault("arista.port", 0)
 	viper.BindEnv("arista.port", "arista_port")
 
 	viper.SetDefault("aci.user", "")
