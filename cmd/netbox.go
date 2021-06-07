@@ -35,7 +35,7 @@ var syncCmd = &cobra.Command{
 			if err != nil {
 				log.Errorf("error node %s: %s", n, err.Error())
 			}
-			nd.AddTask(100, "sync_netbox").Exec = nd.Update
+			nd.AddTask("temper_sync-netbox")
 			go nd.Temper(netboxStatus, &wg)
 		}
 		wg.Wait()

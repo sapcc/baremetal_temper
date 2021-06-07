@@ -29,7 +29,7 @@ import (
 	"github.com/stmcginnis/gofish/redfish"
 )
 
-func (n *Node) RunHardwareChecks() (err error) {
+func (n *Node) runHardwareChecks() (err error) {
 	var dellRe = regexp.MustCompile(`R640|R740|R840`)
 
 	if dellRe.MatchString(n.InspectionData.Inventory.SystemVendor.Model) {
@@ -40,7 +40,7 @@ func (n *Node) RunHardwareChecks() (err error) {
 	return
 }
 
-func (n *Node) RunACICheck() (err error) {
+func (n *Node) runACICheck() (err error) {
 	n.log.Debug("calling aci api for node cable check")
 	aci := diagnostics.NewACI(n.cfg, n.log)
 	noLldp := make([]string, 0)
@@ -99,7 +99,7 @@ func (n *Node) RunACICheck() (err error) {
 	return
 }
 
-func (n *Node) RunAristaCheck() (err error) {
+func (n *Node) runAristaCheck() (err error) {
 	foundAllNeighbors := true
 	cfg := n.cfg.Arista
 	for _, i := range n.Interfaces {

@@ -14,6 +14,7 @@ var (
 	nodes        []string
 	nodeQuery    string
 	netboxStatus bool
+	nodeStatus   string
 	cfgFile      string
 	cfg          config.Config
 )
@@ -32,6 +33,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVarP(&logLevel, "log-level", "l", 5, "temper log level")
 	rootCmd.PersistentFlags().StringArrayVarP(&nodes, "nodes", "n", []string{}, "array of nodes")
 	rootCmd.PersistentFlags().StringVarP(&nodeQuery, "node-query", "q", "", "query to load nodes via netbox")
+	rootCmd.PersistentFlags().StringVar(&nodeStatus, "node-status", "planned", "node status to load via netbox")
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is $HOME/config.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&netboxStatus, "netbox-status", "s", false, "set to true if the node's netbox status should be updated")
 

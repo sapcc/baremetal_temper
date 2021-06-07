@@ -58,7 +58,7 @@ type ErrorMessage struct {
 }
 
 //Create creates a new ironic node based on the provided ironic model
-func (n *Node) Create() (err error) {
+func (n *Node) create() (err error) {
 	n.log.Debug("calling inspector api for node creation")
 	client := &http.Client{Timeout: 30 * time.Second}
 	u, err := url.Parse(fmt.Sprintf("http://%s", n.cfg.Inspector.Host))
@@ -124,7 +124,7 @@ func (n *Node) DeleteNode() (err error) {
 }
 
 //CheckCreated checks if node was created
-func (n *Node) CheckCreated() (err error) {
+func (n *Node) checkCreated() (err error) {
 	if n.UUID == "" {
 		return
 	}
@@ -145,7 +145,7 @@ func (n *Node) CheckCreated() (err error) {
 
 //Prepare prepares the node for customers.
 //Removes resource_class, sets the rightful conductor and maintenance to true
-func (n *Node) Prepare() (err error) {
+func (n *Node) prepare() (err error) {
 	if err = n.getUUID(); err != nil {
 		return
 	}
@@ -202,17 +202,17 @@ func (n *Node) changePowerState(powerState nodes.TargetPowerState) (err error) {
 }
 
 //PowerOn powers on the node
-func (n *Node) PowerOn() (err error) {
+func (n *Node) powerOn() (err error) {
 	return n.changePowerState(nodes.PowerOn)
 }
 
 //PowerOff node off
-func (n *Node) PowerOff() (err error) {
+func (n *Node) powerOff() (err error) {
 	return n.changePowerState(nodes.PowerOff)
 }
 
 //Validate calls the baremetal validate api
-func (n *Node) Validate() (err error) {
+func (n *Node) validate() (err error) {
 	c, err := n.oc.GetServiceClient(n.cfg, "baremetal")
 	if err != nil {
 		return
@@ -257,7 +257,7 @@ func (n *Node) DeleteTestInstance() (err error) {
 
 //Provide sets node provisionstate to provided (available).
 //Needed to deploy a test instance on this node
-func (n *Node) Provide() (err error) {
+func (n *Node) provide() (err error) {
 	c, err := n.oc.GetServiceClient(n.cfg, "baremetal")
 	if err != nil {
 		return
@@ -301,6 +301,9 @@ func (n *Node) Provide() (err error) {
 }
 
 func (n *Node) getUUID() (err error) {
+	if n.UUID != "" {
+		return
+	}
 	c, err := n.oc.GetServiceClient(n.cfg, "baremetal")
 	if err != nil {
 		return
@@ -332,9 +335,12 @@ func (n *Node) getUUID() (err error) {
 
 //WaitForNovaPropagation calls the hypervisor api to check if new node has been
 //propagated to nova
-func (n *Node) WaitForNovaPropagation() (err error) {
+func (n *Node) waitForNovaPropagation() (err error) {
 	c, err := n.oc.GetServiceClient(n.cfg, "compute")
 	if err != nil {
+		return
+	}
+	if err = n.getUUID(); err != nil {
 		return
 	}
 	n.log.Debug("waiting for nova propagation")
@@ -362,7 +368,7 @@ func (n *Node) WaitForNovaPropagation() (err error) {
 }
 
 //ApplyRules applies rules from a json file
-func (n *Node) ApplyRules() (err error) {
+func (n *Node) applyRules() (err error) {
 	n.log.Debug("applying rules on node")
 	rules, err := n.getRules()
 	if err != nil {
@@ -393,7 +399,7 @@ func (n *Node) ApplyRules() (err error) {
 }
 
 //DeployTestInstance creates a new test instance on the newly created node
-func (n *Node) DeployTestInstance() (err error) {
+func (n *Node) deployTestInstance() (err error) {
 	c, err := n.oc.GetServiceClient(n.cfg, "compute")
 	if err != nil {
 		return

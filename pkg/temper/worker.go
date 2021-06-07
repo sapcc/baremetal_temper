@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/sapcc/baremetal_temper/pkg/node"
+	log "github.com/sirupsen/logrus"
 )
 
 type JobChannel chan *node.Node
@@ -38,7 +39,16 @@ func (w *Worker) Start() {
 			select {
 			case job := <-w.JobChan:
 				var wg sync.WaitGroup
-				job.AddAllTemperTasks(true, true, true, true)
+				tags, err := job.GetDeviceTags()
+				if err != nil {
+					job.Status = "failed"
+					return
+				}
+				for _, t := range tags {
+					if err = job.AddTask(*t.Name); err != nil {
+						log.Error(err)
+					}
+				}
 				wg.Add(1)
 				job.Temper(true, &wg)
 				wg.Wait()

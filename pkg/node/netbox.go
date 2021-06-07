@@ -28,16 +28,11 @@ import (
 )
 
 //Update node serial and primaryIP. Does not return error to not trigger errorhandler and cleanup of node
-func (n *Node) Update() error {
+func (n *Node) update() error {
 	params := models.WritableDeviceWithConfigContext{
 		Serial: n.InspectionData.Inventory.SystemVendor.SerialNumber,
 	}
-	d, err := n.getDevice(nil, &n.Name)
-	if err != nil {
-		n.log.Error(err)
-		return nil
-	}
-	if d.PrimaryIP == nil {
+	if n.deviceConfig.PrimaryIP == nil {
 		ips, err := n.Clients.Netbox.Client.Ipam.IpamIPAddressesList(&ipam.IpamIPAddressesListParams{
 			Address: &n.PrimaryIP,
 			Context: context.Background(),
@@ -53,7 +48,7 @@ func (n *Node) Update() error {
 		params.PrimaryIp4 = &ips.Payload.Results[0].ID
 	}
 
-	_, err = n.updateNodeInfo(n.Name, params)
+	_, err := n.updateNodeInfo(params)
 	if err != nil {
 		n.log.Error(err)
 		return nil
@@ -130,7 +125,7 @@ func (n *Node) SetStatus() error {
 
 //SetStatusStaged does not return error to not trigger errorhandler and cleanup of node
 func (n *Node) setStatusStaged() error {
-	p, err := n.updateNodeInfo(n.Name, models.WritableDeviceWithConfigContext{
+	p, err := n.updateNodeInfo(models.WritableDeviceWithConfigContext{
 		Status:   models.DeviceWithConfigContextStatusValueStaged,
 		Comments: "temper successful",
 	})
@@ -147,7 +142,7 @@ func (n *Node) setStatusStaged() error {
 //SetStatusFailed sets status to failed in netbox
 func (n *Node) setStatusFailed(comments string) (err error) {
 	comments = "temper failed: " + comments
-	p, err := n.updateNodeInfo(n.Name, models.WritableDeviceWithConfigContext{
+	p, err := n.updateNodeInfo(models.WritableDeviceWithConfigContext{
 		Status:   models.DeviceWithConfigContextStatusValueFailed,
 		Comments: comments,
 	})
@@ -213,16 +208,12 @@ func (n *Node) loadInterfaces() (err error) {
 	return
 }
 
-func (n *Node) updateNodeInfo(name string, data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesUpdateOK, err error) {
-	node, err := n.getDevice(nil, &name)
-	if err != nil {
-		return
-	}
-	data.DeviceType = &node.DeviceType.ID
-	data.DeviceRole = &node.DeviceRole.ID
-	data.Site = &node.Site.ID
+func (n *Node) updateNodeInfo(data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesUpdateOK, err error) {
+	data.DeviceType = &n.deviceConfig.DeviceType.ID
+	data.DeviceRole = &n.deviceConfig.DeviceRole.ID
+	data.Site = &n.deviceConfig.Site.ID
 	p, err = n.Clients.Netbox.Client.Dcim.DcimDevicesUpdate(&dcim.DcimDevicesUpdateParams{
-		ID:      node.ID,
+		ID:      n.deviceConfig.ID,
 		Data:    &data,
 		Context: context.Background(),
 	}, nil)
@@ -270,29 +261,29 @@ func (n *Node) getInterfaces() (in []*models.Interface, err error) {
 }
 
 func (n *Node) getInterfaceIP(id string) (ip net.IP, err error) {
-	d, err := n.getDevice(&id, nil)
-	if d.PrimaryIp4 == nil {
+	if n.deviceConfig.PrimaryIp4 == nil {
 		return ip, fmt.Errorf("no ip available for switch %s", id)
 	}
-	ip, _, err = net.ParseCIDR(*d.PrimaryIp4.Address)
+	ip, _, err = net.ParseCIDR(*n.deviceConfig.PrimaryIp4.Address)
 	return
 }
 
-func (n *Node) getDevice(id, name *string) (node *models.DeviceWithConfigContext, err error) {
+func (n *Node) loadDeviceConfig() (err error) {
+	if n.deviceConfig != nil {
+		return
+	}
 	param := dcim.DcimDevicesListParams{
 		Context: context.Background(),
+		Name:    &n.Name,
 	}
-	if id != nil {
-		param.ID = id
-	} else {
-		param.Name = name
-	}
+
 	l, err := n.Clients.Netbox.Client.Dcim.DcimDevicesList(&param, nil)
 	if err != nil {
 		return
 	}
 	if len(l.Payload.Results) == 0 {
-		return node, fmt.Errorf("no device found")
+		return fmt.Errorf("no device found")
 	}
-	return l.Payload.Results[0], nil
+	n.deviceConfig = l.Payload.Results[0]
+	return
 }

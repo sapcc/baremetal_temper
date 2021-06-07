@@ -36,7 +36,7 @@ var create = &cobra.Command{
 					log.Errorf("error node %s: %s", n, err.Error())
 					continue
 				}
-				nd.AddBaremetalCreateTasks()
+				nd.AddTask("temper_import-ironic")
 				wg.Add(1)
 				go nd.Temper(netboxStatus, &wg)
 			}
@@ -63,7 +63,7 @@ var test = &cobra.Command{
 				continue
 			}
 			wg.Add(1)
-			node.AddDeploymentTestTasks()
+			node.AddTask("temper_ironic-test-deployment")
 			node.Temper(netboxStatus, &wg)
 		}
 		wg.Wait()
@@ -88,7 +88,7 @@ var validate = &cobra.Command{
 				log.Errorf("error node %s: %s", n, err.Error())
 				continue
 			}
-			node.AddTask(100, "validate_node").Exec = node.Validate
+			node.AddTask("validate_node")
 			wg.Add(1)
 			go node.Temper(netboxStatus, &wg)
 		}
@@ -113,7 +113,7 @@ var prepare = &cobra.Command{
 				log.Errorf("error node %s: %s", n, err.Error())
 				continue
 			}
-			node.AddTask(100, "prepare_node").Exec = node.Prepare
+			node.AddTask("prepare_node")
 			wg.Add(1)
 			go node.Temper(netboxStatus, &wg)
 		}

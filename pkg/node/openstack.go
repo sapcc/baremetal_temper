@@ -32,7 +32,7 @@ import (
 )
 
 //CreateDNSRecords For creates a dns record for the given node if not exists
-func (n *Node) CreateDNSRecords() (err error) {
+func (n *Node) createDNSRecords() (err error) {
 	c, err := n.oc.GetServiceClient(n.cfg, "dns")
 	if err != nil {
 		return

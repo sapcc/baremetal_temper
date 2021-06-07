@@ -108,7 +108,7 @@ func (r *Scheduler) temper(n string) {
 		r.log.Error(err)
 		return
 	}
-	ni.AddAllTemperTasks(r.opts.Diagnostics, r.opts.Baremetal, r.opts.RedfishEvents, true)
+	ni.AddTask("temper_dns")
 	ni.Temper(true, &wg)
 	r.log.Infof("finished tempering node: %s", n)
 	r.Lock()
@@ -120,7 +120,7 @@ func (r *Scheduler) loadNodes() (nodes []string, err error) {
 	targets := make([]NetboxDiscovery, 0)
 	nodes = make([]string, 0)
 	if r.cfg.NetboxNodesPath == "" {
-		nodes, err = r.nc.LoadPlannedNodes(r.cfg.NetboxQuery, &r.cfg.Region)
+		nodes, err = r.nc.LoadNodes(r.cfg.NetboxQuery, nil, &r.cfg.Region)
 		if err != nil {
 			return
 		}

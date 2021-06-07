@@ -27,7 +27,7 @@ var createDNS = &cobra.Command{
 			if err != nil {
 				log.Errorf("error node %s: %s", n, err.Error())
 			}
-			node.AddTask(100, "create_dns").Exec = node.CreateDNSRecords
+			node.AddTask("temper_dns")
 			go node.Temper(netboxStatus, &wg)
 		}
 		wg.Wait()

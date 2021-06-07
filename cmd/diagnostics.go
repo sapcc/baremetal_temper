@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"sync"
-	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/node"
 	log "github.com/sirupsen/logrus"
@@ -28,7 +27,7 @@ var hardwareCheck = &cobra.Command{
 				log.Errorf("error node %s: %s", n, err.Error())
 				return
 			}
-			node.AddTask(1, "hardware_check").Exec = node.RunHardwareChecks
+			node.AddTask("temper_hardware-check")
 			wg.Add(1)
 			go node.Temper(netboxStatus, &wg)
 		}
@@ -51,12 +50,8 @@ var cableCheck = &cobra.Command{
 				log.Errorf("error node %s: %s", n, err.Error())
 				continue
 			}
-			if bootImg && cfg.Redfish.BootImage != nil {
-				nd.AddTask(100, "boot_image").Exec = nd.BootImage
-				nd.AddTask(80, "boot_image_wait").Exec = node.TimeoutTask(5 * time.Minute)
-			}
-			nd.AddTask(70, "arista_check").Exec = nd.RunAristaCheck
-			nd.AddTask(60, "aci_check").Exec = nd.RunACICheck
+
+			nd.AddTask("temper_cable-check")
 			wg.Add(1)
 			go nd.Temper(netboxStatus, &wg)
 		}

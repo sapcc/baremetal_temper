@@ -7,6 +7,7 @@ import (
 	runtimeclient "github.com/go-openapi/runtime/client"
 	netboxclient "github.com/netbox-community/go-netbox/netbox/client"
 	"github.com/netbox-community/go-netbox/netbox/client/dcim"
+	"github.com/netbox-community/go-netbox/netbox/models"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	log "github.com/sirupsen/logrus"
 )
@@ -33,16 +34,19 @@ func NewNetbox(cfg config.Config, ctxLogger *log.Entry) (n *Netbox, err error) {
 	return
 }
 
-//LoadPlannedNodes loads all nodes in status planned
-func (n *Netbox) LoadPlannedNodes(query *string, region *string) (nodes []string, err error) {
+//LoadNodes loads all nodes with role server
+func (n *Netbox) LoadNodes(query, status, region *string) (nodes []string, err error) {
 	nodes = make([]string, 0)
 	role := "server"
-	status := "planned"
+
+	if status == nil {
+		*status = "planned"
+	}
 
 	param := dcim.DcimDevicesListParams{
 		Context: context.Background(),
-		Status:  &status,
 		Role:    &role,
+		Status:  status,
 		Region:  region,
 		Q:       query,
 	}
@@ -53,5 +57,18 @@ func (n *Netbox) LoadPlannedNodes(query *string, region *string) (nodes []string
 	for _, n := range l.Payload.Results {
 		nodes = append(nodes, *n.Name)
 	}
+	return
+}
+
+func (n *Netbox) GetNodeTags(id int64) (tags []models.NestedTag, err error) {
+	p := dcim.DcimDevicesReadParams{
+		Context: context.Background(),
+		ID:      id,
+	}
+	d, err := n.Client.Dcim.DcimDevicesRead(&p, nil)
+	if err != nil {
+		return
+	}
+	tags = d.Payload.Tags
 	return
 }

@@ -32,7 +32,7 @@ func loadNodes() (err error) {
 		return
 	}
 	if nodeQuery != "" {
-		nodes, err = n.LoadPlannedNodes(&nodeQuery, &cfg.Region)
+		nodes, err = n.LoadNodes(&nodeQuery, &nodeStatus, &cfg.Region)
 		if err != nil {
 			log.Errorf("error loading nodes: %s", err.Error())
 			return

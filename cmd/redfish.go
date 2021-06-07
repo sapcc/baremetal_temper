@@ -27,7 +27,7 @@ var bootImage = &cobra.Command{
 				log.Errorf("error node %s: %s", n, err.Error())
 			}
 			wg.Add(1)
-			node.AddTask(100, "boot_image").Exec = node.BootImage
+			node.AddTask("boot_image")
 			go node.Temper(netboxStatus, &wg)
 		}
 		wg.Wait()

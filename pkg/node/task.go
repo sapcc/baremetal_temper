@@ -16,59 +16,53 @@
 
 package node
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
-func (n *Node) AddBaremetalCreateTasks() {
-	n.Tasks[100] = &Task{Name: "create_ironic_node", Exec: n.Create}
-	n.Tasks[90] = &Task{Name: "check_ironic_node_created", Exec: n.CheckCreated}
-	n.Tasks[80] = &Task{Name: "apply_ironic_rules", Exec: n.ApplyRules}
-	n.Tasks[70] = &Task{Name: "validate_ironic_node", Exec: n.Validate}
-	n.Tasks[60] = &Task{Name: "power_on_ironic_node", Exec: n.PowerOn}
-	n.Tasks[50] = &Task{Name: "provide_ironic_node", Exec: n.Provide}
-	n.Tasks[40] = &Task{Name: "power_off_ironic_node", Exec: n.PowerOff}
+func (n *Node) initTasks() {
+	n.taskList["temper_dns"] = []*Task{
+		{Exec: n.createDNSRecords, Name: "create_dns_records"},
+	}
+	n.taskList["temper_cable-check"] = []*Task{
+		{Exec: n.bootImage, Name: "boot_image"},
+		{Exec: TimeoutTask(5 * time.Minute), Name: "boot_image_wait"},
+		{Exec: n.runACICheck, Name: "aci_cable_check"},
+		{Exec: n.runAristaCheck, Name: "arista_cable_check"},
+	}
+	n.taskList["temper_import-ironic"] = []*Task{
+		{Exec: n.create, Name: "create_ironic_node"},
+		{Exec: n.checkCreated, Name: "check_ironic_node_created"},
+		{Exec: n.applyRules, Name: "apply_ironic_rules"},
+		{Exec: n.validate, Name: "validate_ironic_node"},
+		{Exec: n.powerOn, Name: "power_on_ironic_node"},
+		{Exec: n.provide, Name: "provide_ironic_node"},
+	}
+	n.taskList["temper_ironic-test-deployment"] = []*Task{
+		{Exec: n.waitForNovaPropagation, Name: "wait_nova_propagation"},
+		{Exec: n.deployTestInstance, Name: "deploy_test_instance"},
+	}
+	n.taskList["temper_hardware-check"] = []*Task{
+		{Exec: n.runHardwareChecks, Name: "hardware_checks"},
+	}
+	n.taskList["temper_sync-netbox"] = []*Task{
+		{Exec: n.update, Name: "sync_netbox"},
+	}
+	n.taskList["temper_fw-upgrade"] = []*Task{}
+	n.taskList["temper_bmc-settings"] = []*Task{}
 }
 
-func (n *Node) AddDeploymentTestTasks() {
-	n.Tasks[100] = &Task{Name: "get_ironic_uuid", Exec: n.getUUID}
-	n.Tasks[90] = &Task{Name: "wait_nova_propagation", Exec: n.WaitForNovaPropagation}
-	n.Tasks[80] = &Task{Name: "deploy_test_instance", Exec: n.DeployTestInstance}
-}
-
-func (n *Node) AddTask(p int, na string) (t *Task) {
+func (n *Node) AddTask(name string) error {
 	if n.Tasks == nil {
-		n.Tasks = make(map[int]*Task, 0)
+		n.Tasks = make([]*Task, 0)
 	}
-	t, ok := n.Tasks[p]
+	t, ok := n.taskList[name]
 	if !ok {
-		n.Tasks[p] = &Task{Name: na}
+		return fmt.Errorf("unknown task")
 	}
-	return n.Tasks[p]
-}
-
-func (n *Node) AddAllTemperTasks(diag bool, bm bool, events bool, image bool) {
-	n.AddTask(0, "create_dns_records").Exec = n.CreateDNSRecords
-	if events {
-		n.AddTask(10, "create_event_sub").Exec = n.CreateEventSubscription
-	}
-	if diag {
-		n.AddTask(20, "hardware_check").Exec = n.RunHardwareChecks
-
-		if n.cfg.Redfish.BootImage != nil && image {
-			n.AddTask(30, "boot_image").Exec = n.BootImage
-			n.AddTask(40, "boot_image_wait").Exec = TimeoutTask(5 * time.Minute)
-		}
-		n.AddTask(50, "aci_check").Exec = n.RunACICheck
-		n.AddTask(51, "arista_check").Exec = n.RunAristaCheck
-	}
-	if bm {
-		n.AddBaremetalCreateTasks()
-
-	}
-	if events {
-		n.AddTask(70, "delete_event_sub").Exec = n.DeleteEventSubscription
-	}
-	n.AddTask(100, "update_netbox").Exec = n.Update
-	return
+	n.Tasks = append(n.Tasks, t...)
+	return nil
 }
 
 func TimeoutTask(d time.Duration) func() (err error) {

@@ -189,7 +189,7 @@ func (n *Node) addBootInterface(id string, np *redfish.NetworkPort) {
 	}
 }
 
-func (n *Node) BootImage() (err error) {
+func (n *Node) bootImage() (err error) {
 	if err = n.Clients.Redfish.Connect(); err != nil {
 		return
 	}

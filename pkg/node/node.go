@@ -1,7 +1,6 @@
 package node
 
 import (
-	"sort"
 	"sync"
 
 	"github.com/netbox-community/go-netbox/netbox/models"
@@ -13,22 +12,24 @@ import (
 )
 
 type Node struct {
-	Name          string        `json:"name"`
-	RemoteIP      string        `json:"remoteIP"`
-	PrimaryIP     string        `json:"primaryIP"`
-	UUID          string        `json:"uuid"`
-	InstanceUUID  string        `json:"instanceUUID"`
-	InstanceIPv4  string        `json:"instanceIP"`
-	Host          string        `json:"host"`
-	Tasks         map[int]*Task `json:"tasks"`
-	Status        string        `json:"status"`
-	Clients       ApiClients    `json:"-"`
-	PortGroupUUID string        `json:"portGroupUUID"`
-
+	Name           string                   `json:"name"`
+	RemoteIP       string                   `json:"remoteIP"`
+	PrimaryIP      string                   `json:"primaryIP"`
+	UUID           string                   `json:"uuid"`
+	InstanceUUID   string                   `json:"instanceUUID"`
+	InstanceIPv4   string                   `json:"instanceIP"`
+	Host           string                   `json:"host"`
+	Tasks          []*Task                  `json:"tasks"`
+	Status         string                   `json:"status"`
+	Clients        ApiClients               `json:"-"`
+	PortGroupUUID  string                   `json:"portGroupUUID"`
 	ResourceClass  string                   `json:"-"`
 	InspectionData InspectonData            `json:"-"`
 	Interfaces     map[string]NodeInterface `json:"-"`
 	IpamAddresses  []models.IPAddress       `json:"-"`
+
+	deviceConfig *models.DeviceWithConfigContext `json:"-"`
+	taskList     map[string][]*Task              `json:"-"`
 
 	log *log.Entry         `json:"-"`
 	cfg config.Config      `json:"-"`
@@ -134,12 +135,13 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 		"node": name,
 	})
 	n = &Node{
-		Name:   name,
-		Status: "planned",
-		cfg:    cfg,
-		Tasks:  make(map[int]*Task, 0),
-		log:    ctxLogger,
-		oc:     clients.NewClient(cfg, ctxLogger),
+		Name:     name,
+		Status:   "planned",
+		cfg:      cfg,
+		Tasks:    make([]*Task, 0),
+		log:      ctxLogger,
+		oc:       clients.NewClient(cfg, ctxLogger),
+		taskList: make(map[string][]*Task),
 	}
 	if cfg.Redfish.User != "" {
 		n.Clients.Redfish = clients.NewRedfish(cfg, ctxLogger)
@@ -155,27 +157,24 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 
 func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 	defer wg.Done()
-	prios := make([]int, 0, len(n.Tasks))
-	for k := range n.Tasks {
-		prios = append(prios, k)
-	}
-	sort.Ints(prios)
+
 	if err := n.loadInfos(); err != nil {
 		n.Status = "failed"
 		log.Errorf("failed to load %s info. err: %s", n.Name, err.Error())
 		return
 	}
-	for _, k := range prios {
-		if err := n.Tasks[k].Exec(); err != nil {
+
+	for _, t := range n.Tasks {
+		if err := t.Exec(); err != nil {
 			if _, ok := err.(*AlreadyExists); ok {
 				log.Infof("Node %s already exists, nothing to temper", n.Name)
 				break
 			}
-			n.Tasks[k].Error = err.Error()
-			n.Tasks[k].Status = "failed"
+			t.Error = err.Error()
+			t.Status = "failed"
 			n.Status = "failed"
 		} else {
-			n.Tasks[k].Status = "successful"
+			t.Status = "successful"
 		}
 	}
 	if n.Status != "failed" {
@@ -183,6 +182,15 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 	}
 	n.cleanupHandler(netboxSts)
 	return
+}
+
+func (n *Node) GetDeviceTags() ([]models.NestedTag, error) {
+	if n.deviceConfig == nil {
+		if err := n.loadDeviceConfig(); err != nil {
+			return nil, err
+		}
+	}
+	return n.deviceConfig.Tags, nil
 }
 
 func (n *Node) cleanupHandler(netboxSts bool) {
@@ -208,6 +216,9 @@ func (n *Node) cleanupHandler(netboxSts bool) {
 }
 
 func (n *Node) loadInfos() (err error) {
+	if err = n.loadDeviceConfig(); err != nil {
+		return
+	}
 	if err = n.loadIpamAddresses(); err != nil {
 		return
 	}

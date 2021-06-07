@@ -88,7 +88,7 @@ func (h *Handler) eventHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) execTasks(n string, u *url.URL, ctx context.Context) (err error) {
-	node, err := node.New(n, h.cfg)
+	//node, err := node.New(n, h.cfg)
 	if err != nil {
 		return
 	}
@@ -96,7 +96,6 @@ func (h *Handler) execTasks(n string, u *url.URL, ctx context.Context) (err erro
 	for _, v := range vals {
 		switch v {
 		case "sync_netbox":
-			node.Update()
 		case "cablecheck":
 		}
 	}

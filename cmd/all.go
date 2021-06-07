@@ -47,7 +47,8 @@ var complete = &cobra.Command{
 				log.Errorf("error node %s: %s", na, err.Error())
 				return
 			}
-			n.AddAllTemperTasks(diag, baremetal, redfishEvents, bootImg)
+			n.AddTask("temper_dns")
+			//n.AddAllTemperTasks(diag, baremetal, redfishEvents, bootImg)
 			go n.Temper(netboxStatus, &wg)
 		}
 		wg.Wait()
