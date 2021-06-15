@@ -2,6 +2,7 @@ package temper
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/sapcc/baremetal_temper/pkg/config"
@@ -26,12 +27,14 @@ func New(numWorkers int) *Temper {
 	return t
 }
 
-func (t *Temper) AddNodes(nodes []*node.Node) {
+func (t *Temper) AddNode(node *node.Node) {
 	t.Lock()
-	for _, n := range nodes {
-		t.nodes[n.Name] = n
-		t.disp.Dispatch(n)
+	_, ok := t.nodes[node.Name]
+	if ok {
+		fmt.Println("node: " + node.Name + "already being tempered")
 	}
+	t.nodes[node.Name] = node
+	t.disp.Dispatch(node)
 	t.Unlock()
 	go t.cleanup()
 }

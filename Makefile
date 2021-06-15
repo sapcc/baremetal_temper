@@ -2,7 +2,7 @@ IMAGE   ?= keppel.eu-de-1.cloud.sap/ccloud/baremetal_temper
 VERSION = $(shell git rev-parse --verify HEAD | head -c 8)
 
 GOOS    ?= $(shell go env | grep GOOS | cut -d'"' -f2)
-BINARIES := temper
+BINARIES := temper scheduler
 
 LDFLAGS := -X github.com/sapcc/baremetal_temper/pkg/baremetal_temper.VERSION=$(VERSION)
 GOFLAGS := -ldflags "$(LDFLAGS)"

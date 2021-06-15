@@ -22,11 +22,12 @@ var createDNS = &cobra.Command{
 			log.Errorf("error loading nodes: %s", err.Error())
 		}
 		for _, n := range nodes {
-			wg.Add(1)
 			node, err := node.New(n, cfg)
 			if err != nil {
 				log.Errorf("error node %s: %s", n, err.Error())
+				continue
 			}
+			wg.Add(1)
 			node.AddTask("temper_dns")
 			go node.Temper(netboxStatus, &wg)
 		}

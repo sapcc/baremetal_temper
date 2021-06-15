@@ -25,6 +25,7 @@ var bootImage = &cobra.Command{
 			node, err := node.New(n, cfg)
 			if err != nil {
 				log.Errorf("error node %s: %s", n, err.Error())
+				continue
 			}
 			wg.Add(1)
 			node.AddTask("boot_image")

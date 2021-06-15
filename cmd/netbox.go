@@ -30,11 +30,12 @@ var syncCmd = &cobra.Command{
 			log.Errorf("error loading nodes: %s", err.Error())
 		}
 		for _, n := range nodes {
-			wg.Add(1)
 			nd, err := node.New(n, cfg)
 			if err != nil {
 				log.Errorf("error node %s: %s", n, err.Error())
+				continue
 			}
+			wg.Add(1)
 			nd.AddTask("temper_sync-netbox")
 			go nd.Temper(netboxStatus, &wg)
 		}

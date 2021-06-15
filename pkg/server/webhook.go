@@ -22,17 +22,40 @@ type webhookBody struct {
 	Model     string
 	Username  string
 	Data      data
+	Snapshots snapshot `json:"snapshots"`
 }
 
 type data struct {
-	ID     string
-	Name   string
-	Region string
-	Status status
+	ID       int
+	Name     string
+	Region   string
+	Role     role `json:"device_role"`
+	Status   status
+	Comments string
+	Site     site
+}
+
+type role struct {
+	Display string
+	Slug    string
+	ID      int `json:"id"`
 }
 
 type status struct {
 	Value string
 	Label string
-	ID    int
+}
+
+type site struct {
+	ID   int    `json:"id"`
+	Slug string `json:"slug"`
+}
+
+type snapshot struct {
+	PreChange  change `json:"prechange"`
+	PostChange change `json:"postchange"`
+}
+
+type change struct {
+	Status string `json:"status"`
 }

@@ -41,12 +41,12 @@ var complete = &cobra.Command{
 			return
 		}
 		for _, na := range nodes {
-			wg.Add(1)
 			n, err := node.New(na, cfg)
 			if err != nil {
 				log.Errorf("error node %s: %s", na, err.Error())
-				return
+				continue
 			}
+			wg.Add(1)
 			n.AddTask("temper_dns")
 			//n.AddAllTemperTasks(diag, baremetal, redfishEvents, bootImg)
 			go n.Temper(netboxStatus, &wg)

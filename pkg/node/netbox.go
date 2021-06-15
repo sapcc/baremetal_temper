@@ -32,7 +32,7 @@ func (n *Node) update() error {
 	params := models.WritableDeviceWithConfigContext{
 		Serial: n.InspectionData.Inventory.SystemVendor.SerialNumber,
 	}
-	if n.deviceConfig.PrimaryIP == nil {
+	if n.DeviceConfig.PrimaryIP == nil {
 		ips, err := n.Clients.Netbox.Client.Ipam.IpamIPAddressesList(&ipam.IpamIPAddressesListParams{
 			Address: &n.PrimaryIP,
 			Context: context.Background(),
@@ -209,11 +209,11 @@ func (n *Node) loadInterfaces() (err error) {
 }
 
 func (n *Node) updateNodeInfo(data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesUpdateOK, err error) {
-	data.DeviceType = &n.deviceConfig.DeviceType.ID
-	data.DeviceRole = &n.deviceConfig.DeviceRole.ID
-	data.Site = &n.deviceConfig.Site.ID
+	data.DeviceType = &n.DeviceConfig.DeviceType.ID
+	data.DeviceRole = &n.DeviceConfig.DeviceRole.ID
+	data.Site = &n.DeviceConfig.Site.ID
 	p, err = n.Clients.Netbox.Client.Dcim.DcimDevicesUpdate(&dcim.DcimDevicesUpdateParams{
-		ID:      n.deviceConfig.ID,
+		ID:      n.DeviceConfig.ID,
 		Data:    &data,
 		Context: context.Background(),
 	}, nil)
@@ -261,15 +261,15 @@ func (n *Node) getInterfaces() (in []*models.Interface, err error) {
 }
 
 func (n *Node) getInterfaceIP(id string) (ip net.IP, err error) {
-	if n.deviceConfig.PrimaryIp4 == nil {
+	if n.DeviceConfig.PrimaryIp4 == nil {
 		return ip, fmt.Errorf("no ip available for switch %s", id)
 	}
-	ip, _, err = net.ParseCIDR(*n.deviceConfig.PrimaryIp4.Address)
+	ip, _, err = net.ParseCIDR(*n.DeviceConfig.PrimaryIp4.Address)
 	return
 }
 
 func (n *Node) loadDeviceConfig() (err error) {
-	if n.deviceConfig != nil {
+	if n.DeviceConfig != nil {
 		return
 	}
 	param := dcim.DcimDevicesListParams{
@@ -284,6 +284,6 @@ func (n *Node) loadDeviceConfig() (err error) {
 	if len(l.Payload.Results) == 0 {
 		return fmt.Errorf("no device found")
 	}
-	n.deviceConfig = l.Payload.Results[0]
+	n.DeviceConfig = l.Payload.Results[0]
 	return
 }

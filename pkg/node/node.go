@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/netbox-community/go-netbox/netbox/models"
@@ -28,7 +29,7 @@ type Node struct {
 	Interfaces     map[string]NodeInterface `json:"-"`
 	IpamAddresses  []models.IPAddress       `json:"-"`
 
-	deviceConfig *models.DeviceWithConfigContext `json:"-"`
+	DeviceConfig *models.DeviceWithConfigContext `json:"-"`
 	taskList     map[string][]*Task              `json:"-"`
 
 	log *log.Entry         `json:"-"`
@@ -146,12 +147,14 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 	if cfg.Redfish.User != "" {
 		n.Clients.Redfish = clients.NewRedfish(cfg, ctxLogger)
 	}
-	if cfg.Netbox.Token != "" {
-		n.Clients.Netbox, err = clients.NewNetbox(cfg, ctxLogger)
-		if err != nil {
-			return
-		}
+	if cfg.Netbox.Token == "" {
+		return n, fmt.Errorf("missing netbox token")
 	}
+	n.Clients.Netbox, err = clients.NewNetbox(cfg, ctxLogger)
+	if err != nil {
+		return
+	}
+	n.initTasks()
 	return
 }
 
@@ -163,7 +166,6 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 		log.Errorf("failed to load %s info. err: %s", n.Name, err.Error())
 		return
 	}
-
 	for _, t := range n.Tasks {
 		if err := t.Exec(); err != nil {
 			if _, ok := err.(*AlreadyExists); ok {
@@ -185,12 +187,12 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 }
 
 func (n *Node) GetDeviceTags() ([]models.NestedTag, error) {
-	if n.deviceConfig == nil {
+	if n.DeviceConfig == nil {
 		if err := n.loadDeviceConfig(); err != nil {
 			return nil, err
 		}
 	}
-	return n.deviceConfig.Tags, nil
+	return n.DeviceConfig.Tags, nil
 }
 
 func (n *Node) cleanupHandler(netboxSts bool) {
