@@ -83,7 +83,9 @@ func (n *Node) runACICheck() (err error) {
 			for _, ch := range l.LldpIf.LldpIfChildren {
 				if ch.LldpAdjEp.LldpAdjEpAttributes.SysDesc != "" {
 					interCon := strings.Split(ch.LldpAdjEp.LldpAdjEpAttributes.SysDesc, "/")
-					n.log.Debugf("intra aci: aci-%s", interCon[2])
+					if len(interCon) == 3 {
+						n.log.Debugf("intra aci: aci-%s", interCon[2])
+					}
 					continue
 				}
 				if prepareMac(i.Mac) == prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV) {
