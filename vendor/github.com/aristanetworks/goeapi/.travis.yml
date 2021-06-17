@@ -1,0 +1,18 @@
+language: go
+go:
+  - 1.12.10
+before_install:
+  - go get golang.org/x/tools/cmd/cover
+  - go get golang.org/x/lint/golint
+  - go get github.com/tools/godep
+install:
+  - go list ./... | grep -v examples | go get
+before_script:
+  # vet the code...fail build if error
+  - make vet
+script:
+  - go get github.com/aristanetworks/goeapi
+  - make -j4 test GOTEST_FLAGS=-v
+after_success:
+  - make coverdata
+  - bash <(curl -s https://codecov.io/bash)
