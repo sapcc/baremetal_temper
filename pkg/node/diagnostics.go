@@ -44,6 +44,13 @@ func (n *Node) runACICheck() (err error) {
 	n.log.Debug("calling aci api for node cable check")
 	aci := diagnostics.NewACI(n.cfg, n.log)
 	noLldp := make([]string, 0)
+
+	defer func() {
+		if len(noLldp) > 0 {
+			err = fmt.Errorf("cable check not successful for: %s", noLldp)
+		}
+	}()
+
 	for iName, i := range n.Interfaces {
 		if !strings.Contains(i.Connection, "aci") {
 			continue
@@ -53,9 +60,14 @@ func (n *Node) runACICheck() (err error) {
 			continue
 		}
 		var co *container.Container
+		if i.ConnectionIP == "" {
+			noLldp = append(noLldp, iName+"(no_aci_ip)")
+			continue
+		}
 		co, err = aci.GetContainer(i.ConnectionIP)
 		if err != nil {
-			return
+			noLldp = append(noLldp, iName+"("+err.Error()+")")
+			continue
 		}
 
 		l, _ := co.Search("imdata").Children()
@@ -92,18 +104,19 @@ func (n *Node) runACICheck() (err error) {
 		}
 	}
 
-	if len(noLldp) > 0 {
-		return fmt.Errorf("cable check not successful for: %s", noLldp)
-	}
-
 	return
 }
 
 func (n *Node) runAristaCheck() (err error) {
-	foundAllNeighbors := true
+	noLldp := make([]string, 0)
 	cfg := n.cfg.Arista
-	for _, i := range n.Interfaces {
-		if !strings.Contains(i.Connection, "asw") {
+	defer func() {
+		if len(noLldp) > 0 {
+			err = fmt.Errorf("cable check not successful for: %s", noLldp)
+		}
+	}()
+	for iName, i := range n.Interfaces {
+		if !strings.Contains(i.Connection, "sw") {
 			continue
 		}
 		n.log.Debug("calling arista api for node cable check")
@@ -119,17 +132,14 @@ func (n *Node) runAristaCheck() (err error) {
 			//244a.979a.b76b
 			//24:4a:97:9a:b7:6b
 			if strings.ToLower(strings.ReplaceAll(i.Mac, ":", "")) == strings.ReplaceAll(ln.NeighborPort, ".", "") {
+				n.log.Debugf("found aci lldp neighbor: %s", i.Mac)
 				foundNeighbor = true
 				break
 			}
 		}
 		if !foundNeighbor {
-			foundAllNeighbors = false
+			noLldp = append(noLldp, iName+"(lldp_missing)")
 		}
-	}
-
-	if !foundAllNeighbors {
-		return fmt.Errorf("cable check not successful")
 	}
 
 	return

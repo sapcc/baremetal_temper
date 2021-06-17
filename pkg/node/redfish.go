@@ -190,6 +190,7 @@ func (n *Node) addBootInterface(id string, np *redfish.NetworkPort) {
 }
 
 func (n *Node) bootImage() (err error) {
+	n.log.Debugf("booting image for cable check: %s", *n.cfg.Redfish.BootImage)
 	if err = n.Clients.Redfish.Connect(); err != nil {
 		return
 	}
@@ -201,26 +202,14 @@ func (n *Node) bootImage() (err error) {
 	if err = n.insertMedia(*n.cfg.Redfish.BootImage); err != nil {
 		return
 	}
-	return n.reboot(bootOverride)
+	return n.rebootWithCD(bootOverride)
 }
 
 func (n *Node) insertMedia(image string) (err error) {
-	m, err := n.Clients.Redfish.Client.Service.Managers()
+	n.log.Debug("insert media image")
+	vm, err := n.getMedia()
 	if err != nil {
 		return
-	}
-
-	vms, err := m[0].VirtualMedia()
-	if err != nil {
-		return
-	}
-	var vm *redfish.VirtualMedia
-	for _, v := range vms {
-		for _, ty := range v.MediaTypes {
-			if ty == redfish.CDMediaType || ty == redfish.DVDMediaType {
-				vm = v
-			}
-		}
 	}
 	if vm.SupportsMediaInsert {
 		if vm.Image != "" {
@@ -228,7 +217,39 @@ func (n *Node) insertMedia(image string) (err error) {
 		}
 		err = vm.InsertMedia(image, false, false)
 	}
+	return
+}
 
+func (n *Node) ejectMedia() (err error) {
+	n.log.Debug("eject media image")
+	vm, err := n.getMedia()
+	if err != nil {
+		return
+	}
+	if vm.SupportsMediaInsert {
+		if vm.Image != "" {
+			err = vm.EjectMedia()
+		}
+	}
+	return
+}
+
+func (n *Node) getMedia() (vm *redfish.VirtualMedia, err error) {
+	m, err := n.Clients.Redfish.Client.Service.Managers()
+	if err != nil {
+		return
+	}
+	vms, err := m[0].VirtualMedia()
+	if err != nil {
+		return
+	}
+	for _, v := range vms {
+		for _, ty := range v.MediaTypes {
+			if ty == redfish.CDMediaType || ty == redfish.DVDMediaType {
+				vm = v
+			}
+		}
+	}
 	return
 }
 
@@ -260,7 +281,7 @@ func (n *Node) DeleteEventSubscription() (err error) {
 	return nil
 }
 
-func (n *Node) reboot(boot redfish.Boot) (err error) {
+func (n *Node) rebootWithCD(boot redfish.Boot) (err error) {
 	type shareParameters struct {
 		Target string
 	}
@@ -282,6 +303,7 @@ func (n *Node) reboot(boot redfish.Boot) (err error) {
 	}
 	var dellRe = regexp.MustCompile(`R640|R740|R840`)
 	if dellRe.MatchString(sys[0].Model) {
+		fmt.Println("booting dell server")
 		m, err := service.Managers()
 		if err != nil {
 			return err
@@ -290,14 +312,25 @@ func (n *Node) reboot(boot redfish.Boot) (err error) {
 			ShareParameters: shareParameters{Target: "ALL"},
 			ImportBuffer:    "<SystemConfiguration><Component FQDD=\"iDRAC.Embedded.1\"><Attribute Name=\"ServerBoot.1#BootOnce\">Enabled</Attribute><Attribute Name=\"ServerBoot.1#FirstBootDevice\">VCD-DVD</Attribute></Component></SystemConfiguration>",
 		}
-		resp, err := m[0].Client.Post("/redfish/v1/Managers/iDRAC.Embedded.1/Actions/Oem/EID_674_Manager.ImportSystemConfiguration", t)
-		fmt.Println(resp, err)
+		_, err = m[0].Client.Post("/redfish/v1/Managers/iDRAC.Embedded.1/Actions/Oem/EID_674_Manager.ImportSystemConfiguration", t)
 	} else {
 		err = sys[0].SetBoot(bootOverride)
 		if err != nil {
 			return
 		}
 	}
+	return n.power(false)
+}
+
+func (n *Node) power(forceOff bool) (err error) {
+	sys, err := n.Clients.Redfish.Client.Service.Systems()
+	if err != nil {
+		return
+	}
+	if forceOff {
+		return sys[0].Reset(redfish.ForceOffResetType)
+	}
+	n.log.Debugf("rebooting node. power state: %s", sys[0].PowerState)
 	if sys[0].PowerState != redfish.OnPowerState {
 		err = sys[0].Reset(redfish.OnResetType)
 	} else {
@@ -306,7 +339,6 @@ func (n *Node) reboot(boot redfish.Boot) (err error) {
 	if err != nil {
 		return
 	}
-
 	return
 }
 

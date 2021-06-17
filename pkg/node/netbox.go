@@ -166,7 +166,7 @@ func (n *Node) loadInterfaces() (err error) {
 		if in.ConnectionStatus == nil || !*in.ConnectionStatus.Value {
 			continue
 		}
-		if !strings.Contains(*in.Name, "PCI") && !strings.Contains(*in.Name, "LCI") {
+		if !strings.Contains(*in.Name, "PCI") && !strings.Contains(*in.Name, "L") {
 			continue
 		}
 
@@ -203,7 +203,6 @@ func (n *Node) loadInterfaces() (err error) {
 		if *in.MacAddress != intf.Mac {
 			n.log.Infof("netbox / redfish interface %s mac mismatch: %s, %s", *in.Name, intf.Mac, *in.MacAddress)
 		}
-
 	}
 	return
 }
@@ -261,14 +260,19 @@ func (n *Node) getInterfaces() (in []*models.Interface, err error) {
 }
 
 func (n *Node) getInterfaceIP(id string) (ip net.IP, err error) {
-	if n.DeviceConfig.PrimaryIp4 == nil {
+	dc, err := n.loadDeviceConfig(id)
+	if err != nil {
+		return
+	}
+
+	if dc.PrimaryIp4 == nil {
 		return ip, fmt.Errorf("no ip available for switch %s", id)
 	}
-	ip, _, err = net.ParseCIDR(*n.DeviceConfig.PrimaryIp4.Address)
+	ip, _, err = net.ParseCIDR(*dc.PrimaryIp4.Address)
 	return
 }
 
-func (n *Node) loadDeviceConfig() (err error) {
+func (n *Node) loadNodeConfig() (err error) {
 	if n.DeviceConfig != nil {
 		return
 	}
@@ -285,5 +289,22 @@ func (n *Node) loadDeviceConfig() (err error) {
 		return fmt.Errorf("no device found")
 	}
 	n.DeviceConfig = l.Payload.Results[0]
+	return
+}
+
+func (n *Node) loadDeviceConfig(id string) (d *models.DeviceWithConfigContext, err error) {
+	param := dcim.DcimDevicesListParams{
+		Context: context.Background(),
+		ID:      &id,
+	}
+
+	l, err := n.Clients.Netbox.Client.Dcim.DcimDevicesList(&param, nil)
+	if err != nil {
+		return
+	}
+	if len(l.Payload.Results) == 0 {
+		return d, fmt.Errorf("no device found")
+	}
+	d = l.Payload.Results[0]
 	return
 }

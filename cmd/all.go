@@ -48,7 +48,17 @@ var complete = &cobra.Command{
 			}
 			wg.Add(1)
 			n.AddTask("temper_dns")
-			//n.AddAllTemperTasks(diag, baremetal, redfishEvents, bootImg)
+			if diag {
+				n.AddTask("temper_cable-check")
+				n.AddTask("temper_hardware-check")
+			}
+			if baremetal {
+				n.AddTask("temper_import-ironic")
+				n.AddTask("temper_ironic-test-deployment")
+			}
+			if netboxStatus {
+				n.AddTask("temper_sync-netbox")
+			}
 			go n.Temper(netboxStatus, &wg)
 		}
 		wg.Wait()

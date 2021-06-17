@@ -27,9 +27,11 @@ func (n *Node) initTasks() {
 	}
 	n.taskList["temper_cable-check"] = []*Task{
 		{Exec: n.bootImage, Name: "boot_image"},
-		{Exec: TimeoutTask(5 * time.Minute), Name: "boot_image_wait"},
+		{Exec: TimeoutTask(10 * time.Minute), Name: "boot_image_wait"},
 		{Exec: n.runACICheck, Name: "aci_cable_check"},
 		{Exec: n.runAristaCheck, Name: "arista_cable_check"},
+		{Exec: n.ejectMedia, Name: "eject_image"},
+		{Exec: func() error { return n.power(false) }, Name: "reboot_node"},
 	}
 	n.taskList["temper_import-ironic"] = []*Task{
 		{Exec: n.create, Name: "create_ironic_node"},

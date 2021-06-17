@@ -167,6 +167,7 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 		return
 	}
 	for _, t := range n.Tasks {
+		n.log.Infof("Executing temper step: %s", t.Name)
 		if err := t.Exec(); err != nil {
 			if _, ok := err.(*AlreadyExists); ok {
 				log.Infof("Node %s already exists, nothing to temper", n.Name)
@@ -188,7 +189,7 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 
 func (n *Node) GetDeviceTags() ([]models.NestedTag, error) {
 	if n.DeviceConfig == nil {
-		if err := n.loadDeviceConfig(); err != nil {
+		if err := n.loadNodeConfig(); err != nil {
 			return nil, err
 		}
 	}
@@ -198,27 +199,27 @@ func (n *Node) GetDeviceTags() ([]models.NestedTag, error) {
 func (n *Node) cleanupHandler(netboxSts bool) {
 	for _, t := range n.Tasks {
 		if t.Error != "" {
-			log.Errorf("error tempering node %s. task: %s err: %s", n.Name, t.Name, t.Error)
+			n.log.Errorf("error tempering node %s. task: %s err: %s", n.Name, t.Name, t.Error)
 		}
 	}
 	if n.InstanceUUID != "" {
 		if err := n.DeleteTestInstance(); err != nil {
-			log.Error("cannot delete compute instance %s. err: %s", n.InstanceUUID, err.Error())
+			n.log.Error("cannot delete compute instance %s. err: %s", n.InstanceUUID, err.Error())
 		}
 	}
 	if err := n.DeleteNode(); err != nil {
-		log.Errorf("cannot delete node %s. err: %s", n.Name, err.Error())
+		n.log.Errorf("cannot delete node %s. err: %s", n.Name, err.Error())
 	}
 	if netboxSts {
 		if err := n.SetStatus(); err != nil {
-			log.Errorf("cannot set node %s status in netbox. err: %s", n.Name, err.Error())
+			n.log.Errorf("cannot set node %s status in netbox. err: %s", n.Name, err.Error())
 		}
 	}
 
 }
 
 func (n *Node) loadInfos() (err error) {
-	if err = n.loadDeviceConfig(); err != nil {
+	if err = n.loadNodeConfig(); err != nil {
 		return
 	}
 	if err = n.loadIpamAddresses(); err != nil {
