@@ -45,10 +45,12 @@ func (n *Node) initTasks() {
 	n.taskList["temper_import-ironic"] = []*Task{
 		{Exec: n.create, Name: "create_ironic_node"},
 		{Exec: n.checkCreated, Name: "check_ironic_node_created"},
+		{Exec: TimeoutTask(10 * time.Second), Name: "ironic_create_wait"},
 		{Exec: n.applyRules, Name: "apply_ironic_rules"},
 		{Exec: n.validate, Name: "validate_ironic_node"},
 		{Exec: n.powerOn, Name: "power_on_ironic_node"},
 		{Exec: n.provide, Name: "provide_ironic_node"},
+		{Exec: n.prepare, Name: "prepare_ironic_node"},
 	}
 	n.taskList["temper_ironic-test-deployment"] = []*Task{
 		{Exec: n.waitForNovaPropagation, Name: "wait_nova_propagation"},

@@ -1,7 +1,6 @@
 package clients
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -31,7 +30,7 @@ type Openstack struct {
 }
 
 type PortGroup struct {
-	UUID                     string                 `json:"uuid"`
+	UUID                     string                 `json:"uuid,omitempty"`
 	NodeUUID                 string                 `json:"node_uuid"`
 	Name                     string                 `json:"name,omitempty"`
 	Address                  string                 `json:"address,omitempty"`
@@ -63,19 +62,19 @@ func NewClient(cfg config.Config, ctxLogger *log.Entry) *Openstack {
 	return &Openstack{cfg: cfg, log: ctxLogger, Clients: make(map[string]*gophercloud.ServiceClient, 0)}
 }
 
-func (oc *Openstack) GetServiceClient(cfg config.Config, client string) (c *gophercloud.ServiceClient, err error) {
+func (oc *Openstack) GetServiceClient(client string) (c *gophercloud.ServiceClient, err error) {
 	c, ok := oc.Clients[client]
 	if ok {
 		return
 	}
-	provider, err := NewProviderClient(cfg.Openstack)
+	provider, err := NewProviderClient(oc.cfg.Openstack)
 	if err != nil {
 		return nil, err
 	}
 	switch client {
 	case "compute":
 		c, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
-			Region: cfg.Region,
+			Region: oc.cfg.Region,
 		})
 		if err != nil {
 			return nil, err
@@ -84,7 +83,7 @@ func (oc *Openstack) GetServiceClient(cfg config.Config, client string) (c *goph
 		return c, err
 	case "dns":
 		c, err := openstack.NewDNSV2(provider, gophercloud.EndpointOpts{
-			Region: cfg.Region,
+			Region: oc.cfg.Region,
 		})
 		if err != nil {
 			return nil, err
@@ -93,7 +92,7 @@ func (oc *Openstack) GetServiceClient(cfg config.Config, client string) (c *goph
 		return c, err
 	case "identity":
 		c, err := openstack.NewIdentityV3(provider, gophercloud.EndpointOpts{
-			Region: cfg.Region,
+			Region: oc.cfg.Region,
 		})
 		if err != nil {
 			return nil, err
@@ -102,7 +101,7 @@ func (oc *Openstack) GetServiceClient(cfg config.Config, client string) (c *goph
 		return c, err
 	case "network":
 		c, err := openstack.NewNetworkV2(provider, gophercloud.EndpointOpts{
-			Region: cfg.Region,
+			Region: oc.cfg.Region,
 		})
 		if err != nil {
 			return nil, err
@@ -111,7 +110,7 @@ func (oc *Openstack) GetServiceClient(cfg config.Config, client string) (c *goph
 		return c, err
 	case "baremetal":
 		c, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
-			Region: cfg.Region,
+			Region: oc.cfg.Region,
 		})
 		if err == nil {
 			version, err := apiversions.Get(c, "v1").Extract()
@@ -224,7 +223,11 @@ func (c *Openstack) CreateDNSRecord(ip, zoneID, recordName, rType string) (err e
 }
 
 func (c *Openstack) GetImageID(name string) (id string, err error) {
-	err = images.ListDetail(c.Clients["compute"], images.ListOpts{Name: name}).EachPage(
+	cl, err := c.GetServiceClient("compute")
+	if err != nil {
+		return
+	}
+	err = images.ListDetail(cl, images.ListOpts{Name: name}).EachPage(
 		func(p pagination.Page) (bool, error) {
 			is, err := images.ExtractImages(p)
 			if err != nil {
@@ -243,7 +246,11 @@ func (c *Openstack) GetImageID(name string) (id string, err error) {
 }
 
 func (c *Openstack) GetFlavorID(name string) (id string, err error) {
-	err = flavors.ListDetail(c.Clients["compute"], nil).EachPage(func(p pagination.Page) (bool, error) {
+	cl, err := c.GetServiceClient("compute")
+	if err != nil {
+		return
+	}
+	err = flavors.ListDetail(cl, nil).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
 			return true, err
@@ -260,7 +267,11 @@ func (c *Openstack) GetFlavorID(name string) (id string, err error) {
 }
 
 func (c *Openstack) GetConductorZone(name string) (id string, err error) {
-	err = services.List(c.Clients["compute"], services.ListOpts{Host: name}).EachPage(
+	cl, err := c.GetServiceClient("compute")
+	if err != nil {
+		return
+	}
+	err = services.List(cl, services.ListOpts{Host: name}).EachPage(
 		func(p pagination.Page) (bool, error) {
 			svs, err := services.ExtractServices(p)
 			if err != nil {
@@ -298,18 +309,19 @@ func (c *Openstack) GetNetwork(name string) (n servers.Network, err error) {
 }
 
 func (c *Openstack) CreatePortGroup(pg PortGroup) (uuid string, err error) {
-	u := c.Clients["baremetal"].ServiceURL("ports")
+	u := c.Clients["baremetal"].ServiceURL("v1/portgroups")
 	reqBody, err := pg.ToPortCreateMap()
+	r := PortGroup{}
 	if err != nil {
 		return
 	}
-	resp, err := c.Clients["baremetal"].Post(u, reqBody, nil, nil)
+	resp, err := c.Clients["baremetal"].Post(u, reqBody, &r, nil)
+	if err != nil {
+		return
+	}
 	if resp.StatusCode != http.StatusCreated {
 		return uuid, fmt.Errorf("error creating port group: %s", err.Error())
 	}
-	r := PortGroup{}
-	if err = json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return
-	}
+
 	return r.UUID, err
 }

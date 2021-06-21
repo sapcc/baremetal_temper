@@ -21,8 +21,10 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/stmcginnis/gofish/redfish"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 //LoadInventory loads the node's inventory via it's redfish api
@@ -303,7 +305,6 @@ func (n *Node) rebootWithCD(boot redfish.Boot) (err error) {
 	}
 	var dellRe = regexp.MustCompile(`R640|R740|R840`)
 	if dellRe.MatchString(sys[0].Model) {
-		fmt.Println("booting dell server")
 		m, err := service.Managers()
 		if err != nil {
 			return err
@@ -340,6 +341,22 @@ func (n *Node) power(forceOff bool) (err error) {
 		return
 	}
 	return
+}
+
+func (n *Node) waitPowerStateOn() (err error) {
+	cf := wait.ConditionFunc(func() (bool, error) {
+		sys, err := n.Clients.Redfish.Client.Service.Systems()
+		if err != nil {
+			return false, fmt.Errorf("cannot power on node")
+		}
+		p := sys[0].PowerState
+		n.log.Debugf("node power state: %s", p)
+		if p != redfish.OnPowerState {
+			return false, nil
+		}
+		return true, nil
+	})
+	return wait.Poll(10*time.Second, 10*time.Minute, cf)
 }
 
 func parseMac(s string, sep rune) (string, error) {

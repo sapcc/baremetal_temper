@@ -33,7 +33,7 @@ import (
 
 //CreateDNSRecords For creates a dns record for the given node if not exists
 func (n *Node) createDNSRecords() (err error) {
-	c, err := n.oc.GetServiceClient(n.cfg, "dns")
+	c, err := n.oc.GetServiceClient("dns")
 	if err != nil {
 		return
 	}
@@ -90,10 +90,10 @@ func (n *Node) createDNSRecords() (err error) {
 
 func (n *Node) getRules() (r config.Rule, err error) {
 	var funcMap = template.FuncMap{
-		"imageToID":            n.oc.GetImageID,
-		"getMatchingFlavorFor": n.getMatchingFlavorFor,
-		"getRootDeviceSize":    n.getRootDeviceSize,
-		"getPortGroupUUID":     n.createPortGroup,
+		"imageToID":                n.oc.GetImageID,
+		"getMatchingFlavorForNode": n.getMatchingFlavorFor,
+		"getRootDeviceSize":        n.getRootDeviceSize,
+		"getPortGroupUUID":         n.createPortGroup,
 	}
 
 	tmpl := template.New("rules.json").Funcs(funcMap)
@@ -128,7 +128,7 @@ func (n *Node) getRootDeviceSize() (size int64, err error) {
 }
 
 func (n *Node) getMatchingFlavorFor() (name string, err error) {
-	c, err := n.oc.GetServiceClient(n.cfg, "compute")
+	c, err := n.oc.GetServiceClient("compute")
 	if err != nil {
 		return
 	}
@@ -136,7 +136,7 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 	disk := 0.2
 	cpu := 0.1
 	var fl flavors.Flavor
-	err = flavors.ListDetail(c, nil).EachPage(func(p pagination.Page) (bool, error) {
+	err = flavors.ListDetail(c, flavors.ListOpts{AccessType: flavors.PrivateAccess}).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
 			return false, err

@@ -159,11 +159,25 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 }
 
 func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
-	defer wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			n.log.Errorf("aborting node temper: error  %s", r)
+			n.Status = "failed"
+		}
+		n.cleanupHandler(netboxSts)
+		wg.Done()
+	}()
 
 	if err := n.loadInfos(); err != nil {
 		n.Status = "failed"
 		log.Errorf("failed to load %s info. err: %s", n.Name, err.Error())
+		return
+	}
+	n.power(false)
+	n.log.Infof("waiting for node to power on")
+	if err := n.waitPowerStateOn(); err != nil {
+		n.Status = "failed"
+		log.Errorf("failed to power on node via redfish. err: %s", err.Error())
 		return
 	}
 	for _, t := range n.Tasks {
@@ -183,7 +197,6 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 	if n.Status != "failed" {
 		n.Status = "staged"
 	}
-	n.cleanupHandler(netboxSts)
 	return
 }
 
@@ -197,6 +210,7 @@ func (n *Node) GetDeviceTags() ([]models.NestedTag, error) {
 }
 
 func (n *Node) cleanupHandler(netboxSts bool) {
+	n.log.Debugf("calling cleanupHandler, node status: %s", n.Status)
 	for _, t := range n.Tasks {
 		if t.Error != "" {
 			n.log.Errorf("error tempering node %s. task: %s err: %s", n.Name, t.Name, t.Error)
@@ -207,8 +221,10 @@ func (n *Node) cleanupHandler(netboxSts bool) {
 			n.log.Error("cannot delete compute instance %s. err: %s", n.InstanceUUID, err.Error())
 		}
 	}
-	if err := n.DeleteNode(); err != nil {
-		n.log.Errorf("cannot delete node %s. err: %s", n.Name, err.Error())
+	if n.Status == "failed" {
+		if err := n.DeleteNode(); err != nil {
+			n.log.Errorf("cannot delete node %s. err: %s", n.Name, err.Error())
+		}
 	}
 	if netboxSts {
 		if err := n.SetStatus(); err != nil {
@@ -216,6 +232,13 @@ func (n *Node) cleanupHandler(netboxSts bool) {
 		}
 	}
 
+}
+
+func recoverTaskExec(n *Node) {
+	if r := recover(); r != nil {
+		fmt.Println("recovered from ", r)
+		n.Status = "failed"
+	}
 }
 
 func (n *Node) loadInfos() (err error) {
