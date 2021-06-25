@@ -14,6 +14,5 @@ RUN curl -Lo /bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/
 	&& chmod +x /bin/dumb-init \
 	&& dumb-init -V
 COPY --from=builder /go/src/github.com/sapcc/baremetal_temper/bin/linux/temper /usr/local/bin/
-COPY /etc/ /etc/
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["temper"]
