@@ -46,7 +46,7 @@ func main() {
 	s := server.New(cfg, ctxLogger, t)
 	s.RegisterAPIRoutes()
 	srv := &http.Server{
-		Addr: "0.0.0.0:8080",
+		Addr: "0.0.0.0:80",
 		// Good practice to set timeouts to avoid Slowloris attacks.
 		WriteTimeout: time.Second * 15,
 		ReadTimeout:  time.Second * 15,
