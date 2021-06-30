@@ -170,21 +170,22 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 
 	if err := n.loadInfos(); err != nil {
 		n.Status = "failed"
-		log.Errorf("failed to load %s info. err: %s", n.Name, err.Error())
+		n.log.Errorf("failed to load node info. err: %s", err.Error())
 		return
 	}
+	// make sure the node is powered on
 	n.power(false)
 	n.log.Infof("waiting for node to power on")
 	if err := n.waitPowerStateOn(); err != nil {
 		n.Status = "failed"
-		log.Errorf("failed to power on node via redfish. err: %s", err.Error())
+		n.log.Errorf("failed to power on node via redfish. err: %s", err.Error())
 		return
 	}
 	for _, t := range n.Tasks {
 		n.log.Infof("Executing temper step: %s", t.Name)
 		if err := t.Exec(); err != nil {
 			if _, ok := err.(*AlreadyExists); ok {
-				log.Infof("Node %s already exists, nothing to temper", n.Name)
+				n.log.Infof("node %s already exists, nothing to temper", n.Name)
 				break
 			}
 			t.Error = err.Error()

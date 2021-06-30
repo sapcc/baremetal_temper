@@ -66,17 +66,17 @@ func (n *Node) create() (err error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	u, err := url.Parse(fmt.Sprintf("http://%s", n.cfg.Inspector.Host))
 	if err != nil {
-		return
+		panic("could not create ironic node: " + err.Error())
 	}
 	u.Path = path.Join(u.Path, "/v1/continue")
 	db, err := json.Marshal(n.InspectionData)
 	if err != nil {
-		return
+		panic("could not create ironic node: " + err.Error())
 	}
 	n.log.Debugf("calling (%s) with data: %s", u.String(), string(db))
 	req, err := http.NewRequest(http.MethodPost, u.String(), bytes.NewBuffer(db))
 	if err != nil {
-		return
+		panic("could not create ironic node: " + err.Error())
 	}
 	req.Header.Set("Content-Type", "application/json")
 	res, err := client.Do(req)
@@ -86,13 +86,13 @@ func (n *Node) create() (err error) {
 
 	bodyBytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return
+		panic("could not create ironic node: " + err.Error())
 	}
 
 	if res.StatusCode != http.StatusOK {
 		ierr := &InspectorErr{}
 		if err = json.Unmarshal(bodyBytes, ierr); err != nil {
-			return fmt.Errorf("could not create node")
+			panic("could not create ironic node: " + err.Error())
 		}
 		if strings.Contains(ierr.Error.Message, "already exists, uuid") {
 			return &AlreadyExists{}
@@ -100,7 +100,7 @@ func (n *Node) create() (err error) {
 		return fmt.Errorf(ierr.Error.Message)
 	}
 	if err = json.Unmarshal(bodyBytes, n); err != nil {
-		return
+		panic("could not create ironic node: " + err.Error())
 	}
 	return
 }

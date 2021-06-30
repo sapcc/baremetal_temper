@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/netbox-community/go-netbox/netbox/client/dcim"
+	"github.com/netbox-community/go-netbox/netbox/client/extras"
 	"github.com/netbox-community/go-netbox/netbox/client/ipam"
 	"github.com/netbox-community/go-netbox/netbox/models"
 )
@@ -120,6 +121,11 @@ func (n *Node) SetStatus() error {
 		return n.setStatusFailed(strings.Join(errors, " "))
 	}
 	n.setStatusStaged()
+	return nil
+}
+
+func (n *Node) GetConfig() error {
+	n.Clients.Netbox.Client.Extras.ExtrasConfigContextsRead(&extras.ExtrasConfigContextsReadParams{}, nil)
 	return nil
 }
 

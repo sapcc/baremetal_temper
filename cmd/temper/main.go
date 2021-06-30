@@ -30,6 +30,7 @@ import (
 	"github.com/sapcc/baremetal_temper/pkg/server"
 	"github.com/sapcc/baremetal_temper/pkg/temper"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 var opts config.Options
@@ -37,21 +38,22 @@ var wait time.Duration
 
 func main() {
 	var cfg config.Config
+	viper.SetConfigFile(opts.ConfigFilePath)
 	cmd.InitConfig()
-	cmd.ReadInConfig(&cfg)
+	cmd.UnmarshalConfig(&cfg)
 	ctxLogger := log.WithFields(log.Fields{
-		"temper": "",
+		"temper": "server",
 	})
 	t := temper.New(opts.Workers)
 	s := server.New(cfg, ctxLogger, t)
 	s.RegisterAPIRoutes()
 	srv := &http.Server{
-		Addr: "0.0.0.0:8080",
+		Addr: "0.0.0.0:80",
 		// Good practice to set timeouts to avoid Slowloris attacks.
 		WriteTimeout: time.Second * 15,
 		ReadTimeout:  time.Second * 15,
 		IdleTimeout:  time.Second * 60,
-		Handler:      s.Router, // Pass our instance of gorilla/mux in.
+		Handler:      s.Router,
 	}
 
 	go func() {
@@ -79,6 +81,7 @@ func main() {
 func init() {
 	flag.DurationVar(&wait, "graceful-timeout", time.Second*15, "the duration for which the server gracefully wait for existing connections to finish - e.g. 15s or 1m")
 	flag.IntVar(&opts.Workers, "number-workers", 10, "set the number of temper workers to handle tempering of nodes simultaneously")
+	flag.StringVar(&opts.ConfigFilePath, "config-path", "etc/config.yaml", "set the path to the config file")
 	flag.Parse()
 
 	// default log level

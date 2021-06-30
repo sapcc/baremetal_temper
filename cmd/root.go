@@ -140,10 +140,10 @@ func InitConfig() {
 		log.Info("Using config file:", viper.ConfigFileUsed())
 	}
 	viper.AutomaticEnv() // read in environment variables that match
-	ReadInConfig(&cfg)
+	UnmarshalConfig(&cfg)
 }
 
-func ReadInConfig(cfg *config.Config) {
+func UnmarshalConfig(cfg *config.Config) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		log.Fatal(err.Error())
 	}

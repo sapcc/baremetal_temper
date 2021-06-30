@@ -14,6 +14,7 @@ import (
 	"github.com/sapcc/baremetal_temper/pkg/scheduler"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 var errors chan error
@@ -59,8 +60,9 @@ func main() {
 		}
 	}()
 	var cfg config.Config
+	viper.SetConfigFile(opts.ConfigFilePath)
 	cmd.InitConfig()
-	cmd.ReadInConfig(&cfg)
+	cmd.UnmarshalConfig(&cfg)
 	r, err := scheduler.New(ctx, cfg, opts)
 	if err != nil {
 		log.Error(err)

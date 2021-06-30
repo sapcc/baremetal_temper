@@ -88,6 +88,7 @@ func (n *Node) runACICheck() (err error) {
 					}
 					continue
 				}
+				n.log.Debugf("aci lldp neighbor: %s / node %s", prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV), prepareMac(i.Mac))
 				if prepareMac(i.Mac) == prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV) {
 					if l.LldpIf.LldpIfAttributes.ID != i.Port {
 						errMsg := fmt.Sprintf("%s(wrong switch port: %s)", iName, l.LldpIf.LldpIfAttributes.ID)

@@ -25,7 +25,7 @@ func (n *Node) initTasks() {
 	n.taskList["temper_dns"] = []*Task{
 		{Exec: n.createDNSRecords, Name: "create_dns_records"},
 	}
-	if n.cfg.Redfish.BootImage == nil {
+	if *n.cfg.Redfish.BootImage == "" {
 		n.log.Warning("did not find boot image for cable check. run check without it")
 		n.taskList["temper_cable-check"] = []*Task{
 			{Exec: n.runACICheck, Name: "aci_cable_check"},
