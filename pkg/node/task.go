@@ -19,62 +19,110 @@ package node
 import (
 	"fmt"
 	"time"
+
+	"github.com/sapcc/baremetal_temper/pkg/task"
 )
 
-func (n *Node) initTasks() {
-	n.taskList["temper_dns"] = []*Task{
-		{Exec: n.createDNSRecords, Name: "create_dns_records"},
+func (n *Node) initTaskExecs() {
+	n.tasksExecs["dns"] = map[string][]*task.Exec{
+		"create": {
+			{Fn: n.createDNSRecords, Name: "dns.create"},
+		},
 	}
 	if *n.cfg.Redfish.BootImage == "" {
 		n.log.Warning("did not find boot image for cable check. run check without it")
-		n.taskList["temper_cable-check"] = []*Task{
-			{Exec: n.runACICheck, Name: "aci_cable_check"},
-			//{Exec: n.runAristaCheck, Name: "arista_cable_check"},
+		n.tasksExecs["diagnostics"] = map[string][]*task.Exec{
+			"cablecheck": {
+				{Fn: n.runACICheck, Name: "diagnostics.cablecheck.aci"},
+				//{Exec: n.runAristaCheck, Name: "arista_cable_check"},
+			},
+			"hardwarecheck": {
+				{Fn: n.runHardwareChecks, Name: "diagnostics.hardwarecheck"},
+			},
+			"bootimage": {
+				{Fn: n.bootImage, Name: "diagnostics.bootimage"},
+			},
 		}
 	} else {
-		n.taskList["temper_cable-check"] = []*Task{
-			{Exec: n.bootImage, Name: "boot_image"},
-			{Exec: TimeoutTask(10 * time.Minute), Name: "boot_image_wait"},
-			{Exec: n.runACICheck, Name: "aci_cable_check"},
-			//{Exec: n.runAristaCheck, Name: "arista_cable_check"},
-			{Exec: n.ejectMedia, Name: "eject_image"},
-			{Exec: func() error { return n.power(false) }, Name: "reboot_node"},
+		n.tasksExecs["diagnostics"] = map[string][]*task.Exec{
+			"cablecheck": {
+				{Fn: n.bootImage, Name: "diagnostics.cablecheck.bootimage"},
+				{Fn: TimeoutTask(10 * time.Minute), Name: "diagnostics.cablecheck.bootimage.wait"},
+				{Fn: n.runACICheck, Name: "diagnostics.cablecheck.aci"},
+				//{Exec: n.runAristaCheck, Name: "arista_cable_check"},
+				{Fn: n.ejectMedia, Name: "diagnostics.cablecheck.bootimage.eject"},
+				{Fn: func() error { return n.power(false) }, Name: "diagnostics.cablecheck.reboot"},
+			},
+			"hardwarecheck": {
+				{Fn: n.runHardwareChecks, Name: "diagnostics.cablecheck.hardwarecheck"},
+			},
 		}
 	}
-
-	n.taskList["temper_import-ironic"] = []*Task{
-		{Exec: n.create, Name: "create_ironic_node"},
-		{Exec: n.checkCreated, Name: "check_ironic_node_created"},
-		{Exec: TimeoutTask(10 * time.Second), Name: "ironic_create_wait"},
-		{Exec: n.applyRules, Name: "apply_ironic_rules"},
-		{Exec: n.validate, Name: "validate_ironic_node"},
-		{Exec: n.powerOn, Name: "power_on_ironic_node"},
-		{Exec: n.provide, Name: "provide_ironic_node"},
-		{Exec: n.prepare, Name: "prepare_ironic_node"},
+	n.tasksExecs["ironic"] = map[string][]*task.Exec{
+		"create": {
+			{Fn: n.create, Name: "ironic.create"},
+			{Fn: n.checkCreated, Name: "ironic.create.check"},
+			{Fn: TimeoutTask(10 * time.Second), Name: "ironic.create.wait"},
+			{Fn: n.applyRules, Name: "ironic.create.applyRules"},
+			{Fn: n.powerOn, Name: "ironic.create.powerOn"},
+			{Fn: n.provide, Name: "ironic.create.provide"},
+		},
+		"validate": {
+			{Fn: n.validate, Name: "ironic.validate"},
+		},
+		"test": {
+			{Fn: n.waitForNovaPropagation, Name: "ironic.test.waitForNovaPropagation"},
+			{Fn: n.deployTestInstance, Name: "ironic.test.deploy"},
+		},
+		"prepare": {
+			{Fn: n.prepare, Name: "ironic.prepare"},
+		},
 	}
-	n.taskList["temper_ironic-test-deployment"] = []*Task{
-		{Exec: n.waitForNovaPropagation, Name: "wait_nova_propagation"},
-		{Exec: n.deployTestInstance, Name: "deploy_test_instance"},
+	n.tasksExecs["netbox"] = map[string][]*task.Exec{
+		"sync": {
+			{Fn: n.update, Name: "netbox.sync"},
+		},
 	}
-	n.taskList["temper_hardware-check"] = []*Task{
-		{Exec: n.runHardwareChecks, Name: "hardware_checks"},
+	n.tasksExecs["firmware"] = map[string][]*task.Exec{
+		"profile": {},
+		"update":  {},
 	}
-	n.taskList["temper_sync-netbox"] = []*Task{
-		{Exec: n.update, Name: "sync_netbox"},
+	n.tasksExecs["bios"] = map[string][]*task.Exec{
+		"profile": {},
+		"update":  {},
 	}
-	n.taskList["temper_fw-upgrade"] = []*Task{}
-	n.taskList["temper_bmc-settings"] = []*Task{}
 }
 
-func (n *Node) AddTask(name string) error {
+func (n *Node) AddTask(service, taskName string) error {
 	if n.Tasks == nil {
-		n.Tasks = make([]*Task, 0)
+		n.Tasks = make([]*task.Task, 0)
 	}
-	t, ok := n.taskList[name]
+	execs, ok := n.tasksExecs[service][taskName]
 	if !ok {
 		return fmt.Errorf("unknown task")
 	}
-	n.Tasks = append(n.Tasks, t...)
+
+	t := &task.Task{
+		Service: service,
+		Task:    taskName,
+		Exec:    execs,
+	}
+	n.Tasks = append(n.Tasks, t)
+	return nil
+}
+
+func (n *Node) MergeTaskWithContext(cfgCtx task.ConfigContext) error {
+	if n.Tasks == nil {
+		n.Tasks = make([]*task.Task, 0)
+	}
+	for _, t := range cfgCtx.Baremetal.Temper.Tasks {
+		execs, ok := n.tasksExecs[t.Service][t.Task]
+		if !ok {
+			return fmt.Errorf("unknown task")
+		}
+		t.Exec = execs
+		n.Tasks = append(n.Tasks, t)
+	}
 	return nil
 }
 

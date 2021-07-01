@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/sapcc/baremetal_temper/pkg/node"
+	"github.com/sapcc/baremetal_temper/pkg/task"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -39,15 +40,16 @@ func (w *Worker) Start() {
 			select {
 			case job := <-w.JobChan:
 				var wg sync.WaitGroup
-				tags, err := job.GetDeviceTags()
+				cfgCtx, err := task.UnmarshalConfigContext(job.DeviceConfig.ConfigContext)
 				if err != nil {
 					job.Status = "failed"
+					log.Error(err)
 					return
 				}
-				for _, t := range tags {
-					if err = job.AddTask(*t.Name); err != nil {
-						log.Error(err)
-					}
+				if err = job.MergeTaskWithContext(cfgCtx); err != nil {
+					job.Status = "failed"
+					log.Error(err)
+					return
 				}
 				wg.Add(1)
 				job.Temper(true, &wg)

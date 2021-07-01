@@ -13,9 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package cmd
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/sapcc/baremetal_temper/pkg/node"
@@ -23,16 +25,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	baremetal     bool
-	diag          bool
-	redfishEvents bool
-	bootImg       bool
-)
+var tasks []string
 
-var complete = &cobra.Command{
-	Use:   "complete",
-	Short: "tempers a node",
+var runCmd = &cobra.Command{
+	Use:   "run",
+	Short: "run tasks",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
 		err := loadNodes()
@@ -47,19 +44,16 @@ var complete = &cobra.Command{
 				continue
 			}
 			wg.Add(1)
-			n.AddTask("dns", "create")
-			if diag {
-				n.AddTask("diagnostics", "cablecheck")
-				n.AddTask("diagnostics", "hardwarecheck")
-			}
-			if baremetal {
-				n.AddTask("ironic", "create")
-				n.AddTask("ironic", "validate")
-				n.AddTask("ironic", "test")
-				n.AddTask("ironic", "prepare")
-			}
-			if netboxStatus {
-				n.AddTask("netbox", "sync")
+			for _, t := range tasks {
+				s := strings.Split(t, ".")
+				if len(s) != 2 {
+					log.Error("wrong task format. It should be [service].[tasks]")
+					continue
+				}
+				if err = n.AddTask(s[0], s[1]); err != nil {
+					log.Error(err)
+					continue
+				}
 			}
 			go n.Temper(netboxStatus, &wg)
 		}
@@ -69,10 +63,6 @@ var complete = &cobra.Command{
 }
 
 func init() {
-	complete.PersistentFlags().BoolVar(&baremetal, "baremetal", false, "run baremetal tasks")
-	complete.PersistentFlags().BoolVar(&diag, "diagnostics", true, "run diagnostics tasks")
-	complete.PersistentFlags().BoolVar(&redfishEvents, "redfishEvents", false, "use redfish events")
-	complete.PersistentFlags().BoolVar(&bootImg, "bootImage", false, "boots an image before running cablecheck")
-
-	rootCmd.AddCommand(complete)
+	runCmd.PersistentFlags().StringArrayVarP(&tasks, "tasks", "t", []string{}, "array of tasks to run e.g. 'ironic.create'")
+	rootCmd.AddCommand(runCmd)
 }

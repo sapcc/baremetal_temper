@@ -18,14 +18,15 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
 
 	"github.com/netbox-community/go-netbox/netbox/client/dcim"
-	"github.com/netbox-community/go-netbox/netbox/client/extras"
 	"github.com/netbox-community/go-netbox/netbox/client/ipam"
 	"github.com/netbox-community/go-netbox/netbox/models"
+	"github.com/sapcc/baremetal_temper/pkg/task"
 )
 
 //Update node serial and primaryIP. Does not return error to not trigger errorhandler and cleanup of node
@@ -107,12 +108,12 @@ func (n *Node) loadIpamAddresses() (err error) {
 	return
 }
 
-//SetStatusStaged does not return error to not trigger errorhandler and cleanup of node
+//SetStatus does not return error to not trigger errorhandler and cleanup of node
 func (n *Node) SetStatus() error {
 	errors := make([]string, 0)
 	for _, t := range n.Tasks {
 		if t.Error != "" {
-			m := fmt.Sprintf("%s failed: %s", t.Name, t.Error)
+			m := fmt.Sprintf("%s.%s failed: %s", t.Service, t.Task, t.Error)
 			errors = append(errors, m)
 		}
 	}
@@ -120,13 +121,31 @@ func (n *Node) SetStatus() error {
 	if len(errors) != 0 {
 		return n.setStatusFailed(strings.Join(errors, " "))
 	}
-	n.setStatusStaged()
-	return nil
+	if err := n.setStatusStaged(); err != nil {
+		return err
+	}
+	return n.writeLocalContextData()
 }
 
-func (n *Node) GetConfig() error {
-	n.Clients.Netbox.Client.Extras.ExtrasConfigContextsRead(&extras.ExtrasConfigContextsReadParams{}, nil)
-	return nil
+func (n *Node) writeLocalContextData() (err error) {
+	cfg := task.ConfigContext{
+		Baremetal: task.TemperContext{
+			Temper: task.TaskContext{
+				Tasks: n.Tasks,
+			},
+		},
+	}
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	lc := string(b)
+	_, err = n.updateNodeInfo(
+		models.WritableDeviceWithConfigContext{
+			LocalContextData: &lc,
+		},
+	)
+	return
 }
 
 //SetStatusStaged does not return error to not trigger errorhandler and cleanup of node

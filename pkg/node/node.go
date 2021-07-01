@@ -7,6 +7,7 @@ import (
 	"github.com/netbox-community/go-netbox/netbox/models"
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
+	"github.com/sapcc/baremetal_temper/pkg/task"
 	"github.com/stmcginnis/gofish/redfish"
 
 	log "github.com/sirupsen/logrus"
@@ -20,7 +21,7 @@ type Node struct {
 	InstanceUUID   string                   `json:"instanceUUID"`
 	InstanceIPv4   string                   `json:"instanceIP"`
 	Host           string                   `json:"host"`
-	Tasks          []*Task                  `json:"tasks"`
+	Tasks          []*task.Task             `json:"tasks"`
 	Status         string                   `json:"status"`
 	Clients        ApiClients               `json:"-"`
 	PortGroupUUID  string                   `json:"portGroupUUID"`
@@ -29,19 +30,12 @@ type Node struct {
 	Interfaces     map[string]NodeInterface `json:"-"`
 	IpamAddresses  []models.IPAddress       `json:"-"`
 
-	DeviceConfig *models.DeviceWithConfigContext `json:"-"`
-	taskList     map[string][]*Task              `json:"-"`
+	DeviceConfig *models.DeviceWithConfigContext    `json:"-"`
+	tasksExecs   map[string]map[string][]*task.Exec `json:"-"`
 
 	log *log.Entry         `json:"-"`
 	cfg config.Config      `json:"-"`
 	oc  *clients.Openstack `json:"-"`
-}
-
-type Task struct {
-	Exec   func() error `json:"-"`
-	Name   string       `json:"name"`
-	Error  string       `json:"error"`
-	Status string       `json:"status"`
 }
 
 type ApiClients struct {
@@ -136,13 +130,13 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 		"node": name,
 	})
 	n = &Node{
-		Name:     name,
-		Status:   "planned",
-		cfg:      cfg,
-		Tasks:    make([]*Task, 0),
-		log:      ctxLogger,
-		oc:       clients.NewClient(cfg, ctxLogger),
-		taskList: make(map[string][]*Task),
+		Name:       name,
+		Status:     "planned",
+		cfg:        cfg,
+		Tasks:      make([]*task.Task, 0),
+		log:        ctxLogger,
+		oc:         clients.NewClient(cfg, ctxLogger),
+		tasksExecs: make(map[string]map[string][]*task.Exec),
 	}
 	if cfg.Redfish.User != "" {
 		n.Clients.Redfish = clients.NewRedfish(cfg, ctxLogger)
@@ -154,7 +148,7 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 	if err != nil {
 		return
 	}
-	n.initTasks()
+	n.initTaskExecs()
 	return
 }
 
@@ -182,18 +176,24 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 		return
 	}
 	for _, t := range n.Tasks {
-		n.log.Infof("Executing temper step: %s", t.Name)
-		if err := t.Exec(); err != nil {
-			if _, ok := err.(*AlreadyExists); ok {
-				n.log.Infof("node %s already exists, nothing to temper", n.Name)
-				break
+		n.log.Infof("Executing temper Task: %s.%s", t.Service, t.Task)
+		for _, exec := range t.Exec {
+			if t.Status == "done" {
+				continue
 			}
-			t.Error = err.Error()
-			t.Status = "failed"
-			n.Status = "failed"
-		} else {
-			t.Status = "successful"
+			if err := exec.Fn(); err != nil {
+				if _, ok := err.(*AlreadyExists); ok {
+					n.log.Infof("node %s already exists, nothing to temper", n.Name)
+					break
+				}
+				t.Error = err.Error()
+				t.Status = "failed"
+				n.Status = "failed"
+			} else {
+				t.Status = "done"
+			}
 		}
+
 	}
 	if n.Status != "failed" {
 		n.Status = "staged"
@@ -201,20 +201,11 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 	return
 }
 
-func (n *Node) GetDeviceTags() ([]models.NestedTag, error) {
-	if n.DeviceConfig == nil {
-		if err := n.loadNodeConfig(); err != nil {
-			return nil, err
-		}
-	}
-	return n.DeviceConfig.Tags, nil
-}
-
 func (n *Node) cleanupHandler(netboxSts bool) {
 	n.log.Debugf("calling cleanupHandler, node status: %s", n.Status)
 	for _, t := range n.Tasks {
 		if t.Error != "" {
-			n.log.Errorf("error tempering node %s. task: %s err: %s", n.Name, t.Name, t.Error)
+			n.log.Errorf("error tempering node %s. task: %s err: %s", n.Name, t.Task, t.Error)
 		}
 	}
 	if n.InstanceUUID != "" {

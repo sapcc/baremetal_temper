@@ -108,7 +108,7 @@ func (r *Scheduler) temper(n string) {
 		r.log.Error(err)
 		return
 	}
-	ni.AddTask("temper_dns")
+	ni.AddTask("dns", "create")
 	ni.Temper(true, &wg)
 	r.log.Infof("finished tempering node: %s", n)
 	r.Lock()
