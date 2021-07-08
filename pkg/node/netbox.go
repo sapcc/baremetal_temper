@@ -18,7 +18,6 @@ package node
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -135,14 +134,13 @@ func (n *Node) writeLocalContextData() (err error) {
 			},
 		},
 	}
-	b, err := json.Marshal(cfg)
 	if err != nil {
 		return err
 	}
-	lc := string(b)
+
 	_, err = n.updateNodeInfo(
 		models.WritableDeviceWithConfigContext{
-			LocalContextData: &lc,
+			LocalContextData: cfg,
 		},
 	)
 	return
@@ -172,7 +170,8 @@ func (n *Node) setStatusFailed(comments string) (err error) {
 		Comments: comments,
 	})
 	if err != nil {
-		return
+		n.log.Error(err)
+		return nil
 	}
 	if *p.Payload.Status.Value != models.DeviceWithConfigContextStatusValueFailed {
 		return fmt.Errorf("cannot update node status in netbox")

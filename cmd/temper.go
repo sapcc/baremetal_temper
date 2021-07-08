@@ -29,7 +29,7 @@ var tasks []string
 
 var runCmd = &cobra.Command{
 	Use:   "run",
-	Short: "run tasks",
+	Short: "run tasks via -t 'service.task'. If all tasks from a service should be run use: 'service.all'",
 	Run: func(cmd *cobra.Command, args []string) {
 		var wg sync.WaitGroup
 		err := loadNodes()

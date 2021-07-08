@@ -37,7 +37,7 @@ type Task struct {
 	Service string  `json:"service"`
 	Task    string  `json:"task"`
 	Exec    []*Exec `json:"-"`
-	Error   string  `json:"error"`
+	Error   string  `json:"error,omitempty"`
 	Status  string  `json:"status"`
 }
 

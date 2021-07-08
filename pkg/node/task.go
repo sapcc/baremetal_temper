@@ -97,6 +97,17 @@ func (n *Node) AddTask(service, taskName string) error {
 	if n.Tasks == nil {
 		n.Tasks = make([]*task.Task, 0)
 	}
+	if taskName == "all" {
+		for t, e := range n.tasksExecs[service] {
+			t := &task.Task{
+				Service: service,
+				Task:    t,
+				Exec:    e,
+			}
+			n.Tasks = append(n.Tasks, t)
+		}
+		return nil
+	}
 	execs, ok := n.tasksExecs[service][taskName]
 	if !ok {
 		return fmt.Errorf("unknown task")
