@@ -331,12 +331,16 @@ func (n *Node) power(forceOff bool) (err error) {
 	if forceOff {
 		return sys[0].Reset(redfish.ForceOffResetType)
 	}
-	n.log.Debugf("rebooting node. power state: %s", sys[0].PowerState)
+	n.log.Debugf("node power state: %s", sys[0].PowerState)
 	if sys[0].PowerState != redfish.OnPowerState {
 		err = sys[0].Reset(redfish.OnResetType)
-	} else {
+		// lets give the server some time to fully boot,
+		// otherwise redfish resources may not be ready (e.g. ports)
+		TimeoutTask(1 * time.Minute)()
+	} /*else {
 		err = sys[0].Reset(redfish.ForceRestartResetType)
 	}
+	*/
 	if err != nil {
 		return
 	}
@@ -356,7 +360,7 @@ func (n *Node) waitPowerStateOn() (err error) {
 		}
 		return true, nil
 	})
-	return wait.Poll(10*time.Second, 10*time.Minute, cf)
+	return wait.Poll(10*time.Second, 5*time.Minute, cf)
 }
 
 func parseMac(s string, sep rune) (string, error) {
