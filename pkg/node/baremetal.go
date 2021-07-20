@@ -63,7 +63,7 @@ func (n *Node) create() (err error) {
 	if len(n.InspectionData.Inventory.Interfaces) == 0 {
 		panic("no interfaces with linkStatus up found. cannot create ironic node")
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 90 * time.Second}
 	u, err := url.Parse(fmt.Sprintf("http://%s", n.cfg.Inspector.Host))
 	if err != nil {
 		panic("could not create ironic node: " + err.Error())
@@ -81,7 +81,7 @@ func (n *Node) create() (err error) {
 	req.Header.Set("Content-Type", "application/json")
 	res, err := client.Do(req)
 	if err != nil {
-		return
+		panic("could not create ironic node: " + err.Error())
 	}
 
 	bodyBytes, err := ioutil.ReadAll(res.Body)
@@ -97,7 +97,7 @@ func (n *Node) create() (err error) {
 		if strings.Contains(ierr.Error.Message, "already exists, uuid") {
 			return &AlreadyExists{}
 		}
-		return fmt.Errorf(ierr.Error.Message)
+		panic("could not create ironic node: " + ierr.Error.Message)
 	}
 	if err = json.Unmarshal(bodyBytes, n); err != nil {
 		panic("could not create ironic node: " + err.Error())

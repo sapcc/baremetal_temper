@@ -174,7 +174,7 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 		n.log.Errorf("failed to power on node via redfish. err: %s", err.Error())
 		return
 	}
-
+TasksLoop:
 	for _, t := range n.Tasks {
 		n.log.Infof("executing temper task: %s.%s", t.Service, t.Task)
 		for i, exec := range t.Exec {
@@ -184,7 +184,7 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 			if err := exec.Fn(); err != nil {
 				if _, ok := err.(*AlreadyExists); ok {
 					n.log.Infof("node %s already exists, nothing to temper", n.Name)
-					break
+					break TasksLoop
 				}
 				t.Error = err.Error()
 				t.Status = "failed"
