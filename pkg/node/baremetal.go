@@ -265,8 +265,21 @@ func (n *Node) provide() (err error) {
 	if err != nil {
 		return
 	}
+	psWait := func(state string) wait.ConditionFunc {
+		return wait.ConditionFunc(func() (bool, error) {
+			n, err := nodes.Get(c, n.UUID).Extract()
+			if err != nil {
+				return true, err
+			}
+
+			if n.ProvisionState != state {
+				return false, nil
+			}
+			return true, nil
+		})
+	}
 	n.log.Debug("providing node")
-	cf := func(tp nodes.TargetProvisionState) wait.ConditionFunc {
+	changePsWait := func(tp nodes.TargetProvisionState) wait.ConditionFunc {
 		return wait.ConditionFunc(func() (bool, error) {
 			if err = nodes.ChangeProvisionState(c, n.UUID, nodes.ProvisionStateOpts{
 				Target: tp,
@@ -281,26 +294,17 @@ func (n *Node) provide() (err error) {
 			return true, nil
 		})
 	}
-	if err = wait.Poll(5*time.Second, 30*time.Second, cf(nodes.TargetManage)); err != nil {
+	if err = wait.Poll(5*time.Second, 120*time.Second, changePsWait(nodes.TargetManage)); err != nil {
 		return
 	}
-	if err = wait.Poll(5*time.Second, 30*time.Second, cf(nodes.TargetProvide)); err != nil {
+	if err = wait.Poll(5*time.Second, 60*time.Second, psWait("manageable")); err != nil {
+		return
+	}
+	if err = wait.Poll(5*time.Second, 120*time.Second, changePsWait(nodes.TargetProvide)); err != nil {
 		return
 	}
 
-	cfp := wait.ConditionFunc(func() (bool, error) {
-		n, err := nodes.Get(c, n.UUID).Extract()
-		if err != nil {
-			return true, err
-		}
-
-		if n.ProvisionState != "available" {
-			return false, nil
-		}
-		return true, nil
-	})
-
-	return wait.Poll(5*time.Second, 30*time.Second, cfp)
+	return wait.Poll(5*time.Second, 60*time.Second, psWait("available"))
 }
 
 func (n *Node) getUUID() (err error) {
