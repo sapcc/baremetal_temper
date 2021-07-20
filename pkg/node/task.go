@@ -51,7 +51,7 @@ func (n *Node) initTaskExecs() {
 				{Fn: n.runACICheck, Name: "diagnostics.cablecheck.aci"},
 				//{Exec: n.runAristaCheck, Name: "arista_cable_check"},
 				{Fn: n.ejectMedia, Name: "diagnostics.cablecheck.bootimage.eject"},
-				{Fn: func() error { return n.power(false) }, Name: "diagnostics.cablecheck.reboot"},
+				{Fn: func() error { return n.power(false, true) }, Name: "diagnostics.cablecheck.reboot"},
 			},
 			"hardwarecheck": {
 				{Fn: n.runHardwareChecks, Name: "diagnostics.cablecheck.hardwarecheck"},

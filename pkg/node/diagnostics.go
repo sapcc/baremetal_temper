@@ -52,6 +52,7 @@ func (n *Node) runACICheck() (err error) {
 	}()
 
 	for iName, i := range n.Interfaces {
+		n.log.Debug("checking interface: %s --> %s", iName, i.Connection)
 		if !strings.Contains(i.Connection, "aci") {
 			continue
 		}
@@ -86,9 +87,8 @@ func (n *Node) runACICheck() (err error) {
 					if len(interCon) == 3 {
 						n.log.Debugf("intra aci: aci-%s", interCon[2])
 					}
-					continue
 				}
-				n.log.Debugf("aci lldp neighbor: %s / node %s", prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV), prepareMac(i.Mac))
+				n.log.Debugf("aci lldp: %s / node %s", prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV), prepareMac(i.Mac))
 				if prepareMac(i.Mac) == prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV) {
 					if l.LldpIf.LldpIfAttributes.ID != i.Port {
 						errMsg := fmt.Sprintf("%s(wrong switch port: %s)", iName, l.LldpIf.LldpIfAttributes.ID)

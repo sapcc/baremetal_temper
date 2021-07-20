@@ -161,23 +161,23 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 		n.cleanupHandler(netboxSts)
 		wg.Done()
 	}()
-
 	if err := n.loadInfos(); err != nil {
 		n.Status = "failed"
 		n.log.Errorf("failed to load node info. err: %s", err.Error())
 		return
 	}
 	// make sure the node is powered on
-	n.power(false)
+	n.power(false, false)
 	n.log.Infof("waiting for node to power on")
 	if err := n.waitPowerStateOn(); err != nil {
 		n.Status = "failed"
 		n.log.Errorf("failed to power on node via redfish. err: %s", err.Error())
 		return
 	}
+
 	for _, t := range n.Tasks {
-		n.log.Infof("Executing temper Task: %s.%s", t.Service, t.Task)
-		for _, exec := range t.Exec {
+		n.log.Infof("executing temper task: %s.%s", t.Service, t.Task)
+		for i, exec := range t.Exec {
 			if t.Status == "done" {
 				continue
 			}
@@ -190,7 +190,9 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 				t.Status = "failed"
 				n.Status = "failed"
 			} else {
-				t.Status = "done"
+				if i == len(t.Exec)-1 {
+					t.Status = "done"
+				}
 			}
 		}
 

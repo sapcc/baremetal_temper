@@ -204,11 +204,11 @@ func (n *Node) bootImage() (err error) {
 	if err = n.insertMedia(*n.cfg.Redfish.BootImage); err != nil {
 		return
 	}
-	return n.rebootWithCD(bootOverride)
+	return n.rebootFromVirtualMedia(bootOverride)
 }
 
 func (n *Node) insertMedia(image string) (err error) {
-	n.log.Debug("insert media image")
+	n.log.Debug("insert virtual media")
 	vm, err := n.getMedia()
 	if err != nil {
 		return
@@ -217,7 +217,31 @@ func (n *Node) insertMedia(image string) (err error) {
 		if vm.Image != "" {
 			err = vm.EjectMedia()
 		}
-		err = vm.InsertMedia(image, false, false)
+		var patchRe = regexp.MustCompile(`SR950`)
+		if patchRe.MatchString(n.InspectionData.Inventory.SystemVendor.Model) {
+			type temp struct {
+				Image          string
+				Inserted       bool `json:"Inserted"`
+				WriteProtected bool `json:"WriteProtected"`
+			}
+			t := temp{
+				Image:          image,
+				Inserted:       true,
+				WriteProtected: false,
+			}
+			return vm.InsertMedia(image, "PATCH", t)
+		}
+		type temp struct {
+			Image          string
+			Inserted       bool `json:"-"`
+			WriteProtected bool `json:"-"`
+		}
+		t := temp{
+			Image:          image,
+			Inserted:       true,
+			WriteProtected: false,
+		}
+		return vm.InsertMedia(image, "POST", t)
 	}
 	return
 }
@@ -230,7 +254,11 @@ func (n *Node) ejectMedia() (err error) {
 	}
 	if vm.SupportsMediaInsert {
 		if vm.Image != "" {
-			err = vm.EjectMedia()
+			var patchRe = regexp.MustCompile(`SR950`)
+			if patchRe.MatchString(n.InspectionData.Inventory.SystemVendor.Model) {
+				return vm.InsertMedia("", "PATCH", nil)
+			}
+			return vm.EjectMedia()
 		}
 	}
 	return
@@ -245,10 +273,12 @@ func (n *Node) getMedia() (vm *redfish.VirtualMedia, err error) {
 	if err != nil {
 		return
 	}
+vmLoop:
 	for _, v := range vms {
 		for _, ty := range v.MediaTypes {
 			if ty == redfish.CDMediaType || ty == redfish.DVDMediaType {
 				vm = v
+				break vmLoop
 			}
 		}
 	}
@@ -283,7 +313,8 @@ func (n *Node) DeleteEventSubscription() (err error) {
 	return nil
 }
 
-func (n *Node) rebootWithCD(boot redfish.Boot) (err error) {
+func (n *Node) rebootFromVirtualMedia(boot redfish.Boot) (err error) {
+	n.log.Debug("boot from virtual media")
 	type shareParameters struct {
 		Target string
 	}
@@ -304,7 +335,7 @@ func (n *Node) rebootWithCD(boot redfish.Boot) (err error) {
 		return
 	}
 	var dellRe = regexp.MustCompile(`R640|R740|R840`)
-	if dellRe.MatchString(sys[0].Model) {
+	if dellRe.MatchString(n.InspectionData.Inventory.SystemVendor.Model) {
 		m, err := service.Managers()
 		if err != nil {
 			return err
@@ -320,10 +351,10 @@ func (n *Node) rebootWithCD(boot redfish.Boot) (err error) {
 			return
 		}
 	}
-	return n.power(false)
+	return n.power(false, true)
 }
 
-func (n *Node) power(forceOff bool) (err error) {
+func (n *Node) power(forceOff bool, restart bool) (err error) {
 	sys, err := n.Clients.Redfish.Client.Service.Systems()
 	if err != nil {
 		return
@@ -331,16 +362,17 @@ func (n *Node) power(forceOff bool) (err error) {
 	if forceOff {
 		return sys[0].Reset(redfish.ForceOffResetType)
 	}
+	if restart {
+		return sys[0].Reset(redfish.ForceRestartResetType)
+	}
 	n.log.Debugf("node power state: %s", sys[0].PowerState)
 	if sys[0].PowerState != redfish.OnPowerState {
 		err = sys[0].Reset(redfish.OnResetType)
 		// lets give the server some time to fully boot,
 		// otherwise redfish resources may not be ready (e.g. ports)
 		TimeoutTask(1 * time.Minute)()
-	} /*else {
-		err = sys[0].Reset(redfish.ForceRestartResetType)
 	}
-	*/
+
 	if err != nil {
 		return
 	}
