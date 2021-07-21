@@ -20,9 +20,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"net"
 	"strconv"
+	"text/template"
 
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
@@ -108,10 +108,9 @@ func (n *Node) getRules() (r config.Rule, err error) {
 	}
 	err = t.Execute(out, d)
 	if err != nil {
-
+		return
 	}
 	json.Unmarshal(out.Bytes(), &r)
-
 	return
 }
 

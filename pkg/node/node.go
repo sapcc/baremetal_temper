@@ -167,8 +167,11 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 		return
 	}
 	// make sure the node is powered on
-	n.power(false, false)
-	n.log.Infof("waiting for node to power on")
+	if err := n.power(false, false); err != nil {
+		n.Status = "failed"
+		n.log.Errorf("failed to power node. err: %s", err.Error())
+		return
+	}
 	if err := n.waitPowerStateOn(); err != nil {
 		n.Status = "failed"
 		n.log.Errorf("failed to power on node via redfish. err: %s", err.Error())
