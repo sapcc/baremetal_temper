@@ -134,6 +134,7 @@ func (n *Node) setCPUs(s *redfish.ComputerSystem) (err error) {
 }
 
 func (n *Node) setNetworkDevicesData(c *redfish.Chassis) (err error) {
+	pciHigh, pciLow := 0, 0
 	intfs := make(map[string]NodeInterface, 0)
 	n.InspectionData.Inventory.Interfaces = make([]Interface, 0)
 	na, err := c.NetworkAdapters()
@@ -143,6 +144,11 @@ func (n *Node) setNetworkDevicesData(c *redfish.Chassis) (err error) {
 
 	for _, a := range na {
 		slot := a.Controllers[0].Location.PartLocation.LocationOrdinalValue
+		if slot > pciHigh {
+			pciHigh = slot
+		} else if slot < pciLow {
+			pciLow = slot
+		}
 		nps, err := a.NetworkPorts()
 		if err != nil {
 			return err
@@ -355,6 +361,9 @@ func (n *Node) rebootFromVirtualMedia(boot redfish.Boot) (err error) {
 }
 
 func (n *Node) power(forceOff bool, restart bool) (err error) {
+	if err = n.Clients.Redfish.Connect(); err != nil {
+		return
+	}
 	sys, err := n.Clients.Redfish.Client.Service.Systems()
 	if err != nil {
 		return
@@ -367,6 +376,7 @@ func (n *Node) power(forceOff bool, restart bool) (err error) {
 	}
 	n.log.Debugf("node power state: %s", sys[0].PowerState)
 	if sys[0].PowerState != redfish.OnPowerState {
+		n.log.Debug("node power on")
 		err = sys[0].Reset(redfish.OnResetType)
 		// lets give the server some time to fully boot,
 		// otherwise redfish resources may not be ready (e.g. ports)
@@ -380,6 +390,7 @@ func (n *Node) power(forceOff bool, restart bool) (err error) {
 }
 
 func (n *Node) waitPowerStateOn() (err error) {
+	n.log.Infof("waiting for node to power on")
 	cf := wait.ConditionFunc(func() (bool, error) {
 		sys, err := n.Clients.Redfish.Client.Service.Systems()
 		if err != nil {

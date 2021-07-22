@@ -316,7 +316,7 @@ func (n *Node) getUUID() (err error) {
 		return
 	}
 	n.log.Debug("get node uuid")
-	p, err := nodes.List(c, nodes.ListOpts{}).AllPages()
+	p, err := nodes.ListDetail(c, nodes.ListOpts{}).AllPages()
 	if err != nil {
 		return &clients.NodeNotFoundError{
 			Err: fmt.Sprintf("could not find node %s uuid", n.Name),
@@ -329,7 +329,20 @@ func (n *Node) getUUID() (err error) {
 	for _, no := range nodes {
 		if no.Name == n.Name {
 			n.UUID = no.UUID
+			n.ProvisionState = no.ProvisionState
 			break
+		}
+		if no.ProvisionState == "enroll" && no.Name == "" {
+			//node005r-ap017.cc.na-us-1.cloud.sap
+			ipmi := fmt.Sprintf("%v", no.DriverInfo["ipmi_address"])
+			s := strings.Split(ipmi, ".")
+			if len(s) == 5 {
+				if strings.Replace(s[0], "r", "", 1) == n.Name {
+					n.UUID = no.UUID
+					n.ProvisionState = no.ProvisionState
+					break
+				}
+			}
 		}
 	}
 	if n.UUID == "" {
@@ -399,10 +412,13 @@ func (n *Node) applyRules() (err error) {
 		})
 	}
 	if err = n.updatePorts(updatePorts); err != nil {
-		return
+		panic("cannot apply rules. err: " + err.Error())
 	}
 
-	return n.updateNode(updateNode)
+	if err = n.updateNode(updateNode); err != nil {
+		panic("cannot apply rules. err: " + err.Error())
+	}
+	return
 }
 
 //DeployTestInstance creates a new test instance on the newly created node

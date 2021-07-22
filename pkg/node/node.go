@@ -18,6 +18,7 @@ type Node struct {
 	RemoteIP       string                   `json:"remoteIP"`
 	PrimaryIP      string                   `json:"primaryIP"`
 	UUID           string                   `json:"uuid"`
+	ProvisionState string                   `json:"provisionState"`
 	InstanceUUID   string                   `json:"instanceUUID"`
 	InstanceIPv4   string                   `json:"instanceIP"`
 	Host           string                   `json:"host"`
@@ -161,7 +162,7 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 		n.cleanupHandler(netboxSts)
 		wg.Done()
 	}()
-	if err := n.loadInfos(); err != nil {
+	if err := n.loadNetboxInfos(); err != nil {
 		n.Status = "failed"
 		n.log.Errorf("failed to load node info. err: %s", err.Error())
 		return
@@ -177,6 +178,12 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 		n.log.Errorf("failed to power on node via redfish. err: %s", err.Error())
 		return
 	}
+	if err := n.loadRedfishInfos(); err != nil {
+		n.Status = "failed"
+		n.log.Errorf("failed to load node info. err: %s", err.Error())
+		return
+	}
+
 TasksLoop:
 	for _, t := range n.Tasks {
 		n.log.Infof("executing temper task: %s.%s", t.Service, t.Task)
@@ -186,12 +193,20 @@ TasksLoop:
 			}
 			if err := exec.Fn(); err != nil {
 				if _, ok := err.(*AlreadyExists); ok {
-					n.log.Infof("node %s already exists, nothing to temper", n.Name)
-					break TasksLoop
+					if err := n.getUUID(); err != nil {
+						break TasksLoop
+					}
+					if n.ProvisionState != "enroll" {
+						n.log.Infof("node %s already exists, nothing to temper", n.Name)
+						break TasksLoop
+					}
+					n.log.Info("found existing node in enroll state. ")
+				} else {
+					t.Error = err.Error()
+					t.Status = "failed"
+					n.Status = "failed"
 				}
-				t.Error = err.Error()
-				t.Status = "failed"
-				n.Status = "failed"
+
 			} else {
 				if i == len(t.Exec)-1 {
 					t.Status = "done"
@@ -238,7 +253,7 @@ func recoverTaskExec(n *Node) {
 	}
 }
 
-func (n *Node) loadInfos() (err error) {
+func (n *Node) loadNetboxInfos() (err error) {
 	if err = n.loadNodeConfig(); err != nil {
 		return
 	}
@@ -248,6 +263,10 @@ func (n *Node) loadInfos() (err error) {
 	if err = n.Clients.Redfish.SetEndpoint(n.RemoteIP); err != nil {
 		return
 	}
+	return
+}
+
+func (n *Node) loadRedfishInfos() (err error) {
 	if err = n.loadInventory(); err != nil {
 		return
 	}
