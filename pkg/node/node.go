@@ -193,7 +193,7 @@ TasksLoop:
 			}
 			if err := exec.Fn(); err != nil {
 				if _, ok := err.(*AlreadyExists); ok {
-					if err := n.getUUID(); err != nil {
+					if err := n.loadBaremetalNodeInfo(); err != nil {
 						break TasksLoop
 					}
 					if n.ProvisionState != "enroll" {

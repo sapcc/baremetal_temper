@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"strings"
 
+	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/stmcginnis/gofish/redfish"
 )
 
@@ -48,4 +50,22 @@ func reverseZone(addr string) (arpaZone string, err error) {
 		return
 	}
 	return "", fmt.Errorf("no ip4 address")
+}
+
+func findNode(nodes []nodes.Node, n *Node) (err error) {
+	for _, nd := range nodes {
+		if nd.ProvisionState == "enroll" && nd.Name == "" {
+			//node005r-ap017.cc.na-us-1.cloud.sap
+			ipmi := fmt.Sprintf("%v", nd.DriverInfo["ipmi_address"])
+			s := strings.Split(ipmi, ".")
+			if len(s) == 5 {
+				if strings.Replace(s[0], "r", "", 1) == n.Name {
+					n.UUID = nd.UUID
+					n.ProvisionState = nd.ProvisionState
+					break
+				}
+			}
+		}
+	}
+	return
 }

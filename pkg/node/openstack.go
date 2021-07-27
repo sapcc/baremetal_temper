@@ -24,7 +24,6 @@ import (
 	"strconv"
 	"text/template"
 
-	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
 	"github.com/gophercloud/gophercloud/pagination"
@@ -160,21 +159,5 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 	n.InspectionData.Inventory.Memory.PhysicalMb = fl.RAM
 	n.InspectionData.RootDisk.Size = int64(fl.Disk)
 	n.InspectionData.Inventory.CPU.Count = fl.VCPUs
-	updateNode := nodes.UpdateOpts{}
-	updateNode = append(updateNode, nodes.UpdateOperation{
-		Op:    nodes.ReplaceOp,
-		Path:  "/properties/memory_mb",
-		Value: fl.RAM,
-	})
-	updateNode = append(updateNode, nodes.UpdateOperation{
-		Op:    nodes.ReplaceOp,
-		Path:  "/properties/local_gb",
-		Value: fl.Disk,
-	})
-	updateNode = append(updateNode, nodes.UpdateOperation{
-		Op:    nodes.ReplaceOp,
-		Path:  "/properties/cpus",
-		Value: fl.VCPUs,
-	})
 	return
 }

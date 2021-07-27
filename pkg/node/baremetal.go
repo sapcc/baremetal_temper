@@ -149,7 +149,7 @@ func (n *Node) checkCreated() (err error) {
 //Prepare prepares the node for customers.
 //Removes resource_class, sets the rightful conductor and maintenance to true
 func (n *Node) prepare() (err error) {
-	if err = n.getUUID(); err != nil {
+	if err = n.loadBaremetalNodeInfo(); err != nil {
 		return
 	}
 	n.log.Debug("preparing node")
@@ -206,7 +206,10 @@ func (n *Node) changePowerState(powerState nodes.TargetPowerState) (err error) {
 
 //PowerOn powers on the node
 func (n *Node) powerOn() (err error) {
-	return n.changePowerState(nodes.PowerOn)
+	if err = n.changePowerState(nodes.PowerOn); err != nil {
+		panic("cannot power on node")
+	}
+	return
 }
 
 //PowerOff node off
@@ -221,7 +224,7 @@ func (n *Node) validate() (err error) {
 		return
 	}
 	n.log.Debug("validating node")
-	if err = n.getUUID(); err != nil {
+	if err = n.loadBaremetalNodeInfo(); err != nil {
 		return
 	}
 	v, err := nodes.Validate(c, n.UUID).Extract()
@@ -304,10 +307,31 @@ func (n *Node) provide() (err error) {
 		return
 	}
 
-	return wait.Poll(5*time.Second, 60*time.Second, psWait("available"))
+	if err = wait.Poll(5*time.Second, 60*time.Second, psWait("available")); err != nil {
+		return
+	}
+
+	update := nodes.UpdateOpts{}
+	update = append(update, nodes.UpdateOperation{
+		Op:    nodes.ReplaceOp,
+		Path:  "/properties/memory_mb",
+		Value: n.InspectionData.Inventory.Memory.PhysicalMb,
+	})
+	update = append(update, nodes.UpdateOperation{
+		Op:    nodes.ReplaceOp,
+		Path:  "/properties/local_gb",
+		Value: n.InspectionData.RootDisk.Size,
+	})
+	update = append(update, nodes.UpdateOperation{
+		Op:    nodes.ReplaceOp,
+		Path:  "/properties/cpus",
+		Value: n.InspectionData.Inventory.CPU.Count,
+	})
+
+	return n.updateNode(update)
 }
 
-func (n *Node) getUUID() (err error) {
+func (n *Node) loadBaremetalNodeInfo() (err error) {
 	if n.UUID != "" {
 		return
 	}
@@ -332,17 +356,10 @@ func (n *Node) getUUID() (err error) {
 			n.ProvisionState = no.ProvisionState
 			break
 		}
-		if no.ProvisionState == "enroll" && no.Name == "" {
-			//node005r-ap017.cc.na-us-1.cloud.sap
-			ipmi := fmt.Sprintf("%v", no.DriverInfo["ipmi_address"])
-			s := strings.Split(ipmi, ".")
-			if len(s) == 5 {
-				if strings.Replace(s[0], "r", "", 1) == n.Name {
-					n.UUID = no.UUID
-					n.ProvisionState = no.ProvisionState
-					break
-				}
-			}
+	}
+	if n.UUID == "" {
+		if err = findNode(nodes, n); err != nil {
+			return
 		}
 	}
 	if n.UUID == "" {
@@ -360,7 +377,7 @@ func (n *Node) waitForNovaPropagation() (err error) {
 	if err != nil {
 		return
 	}
-	if err = n.getUUID(); err != nil {
+	if err = n.loadBaremetalNodeInfo(); err != nil {
 		return
 	}
 	n.log.Debug("waiting for nova propagation")
@@ -521,6 +538,7 @@ func (n *Node) updatePorts(opts ports.UpdateOpts) (err error) {
 	if err != nil {
 		return
 	}
+
 	listOpts := ports.ListOpts{
 		NodeUUID: n.UUID,
 	}
