@@ -409,7 +409,7 @@ func (n *Node) applyRules() (err error) {
 	n.log.Debug("applying rules on node")
 	rules, err := n.getRules()
 	if err != nil {
-		return
+		panic("cannot apply rules. err: " + err.Error())
 	}
 	updateNode := nodes.UpdateOpts{}
 	updatePorts := ports.UpdateOpts{}

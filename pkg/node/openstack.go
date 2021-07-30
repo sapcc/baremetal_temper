@@ -134,7 +134,7 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 	disk := 0.2
 	cpu := 0.1
 	var fl flavors.Flavor
-	err = flavors.ListDetail(c, flavors.ListOpts{AccessType: flavors.PrivateAccess}).EachPage(func(p pagination.Page) (bool, error) {
+	err = flavors.ListDetail(c, flavors.ListOpts{AccessType: flavors.PublicAccess}).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
 			return false, err
