@@ -81,7 +81,7 @@ func main() {
 func init() {
 	flag.DurationVar(&wait, "graceful-timeout", time.Second*15, "the duration for which the server gracefully wait for existing connections to finish - e.g. 15s or 1m")
 	flag.IntVar(&opts.Workers, "number-workers", 10, "set the number of temper workers to handle tempering of nodes simultaneously")
-	flag.StringVar(&opts.ConfigFilePath, "config-path", "etc/config.yaml", "set the path to the config file")
+	flag.StringVar(&opts.ConfigFilePath, "config-path", "etc/config/temper.yaml", "set the path to the config file")
 	flag.Parse()
 
 	// default log level

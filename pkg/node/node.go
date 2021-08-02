@@ -162,27 +162,6 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 		n.cleanupHandler(netboxSts)
 		wg.Done()
 	}()
-	if err := n.loadNetboxInfos(); err != nil {
-		n.Status = "failed"
-		n.log.Errorf("failed to load node info. err: %s", err.Error())
-		return
-	}
-	// make sure the node is powered on
-	if err := n.power(false, false); err != nil {
-		n.Status = "failed"
-		n.log.Errorf("failed to power node. err: %s", err.Error())
-		return
-	}
-	if err := n.waitPowerStateOn(); err != nil {
-		n.Status = "failed"
-		n.log.Errorf("failed to power on node via redfish. err: %s", err.Error())
-		return
-	}
-	if err := n.loadRedfishInfos(); err != nil {
-		n.Status = "failed"
-		n.log.Errorf("failed to load node info. err: %s", err.Error())
-		return
-	}
 
 TasksLoop:
 	for _, t := range n.Tasks {
@@ -254,7 +233,7 @@ func recoverTaskExec(n *Node) {
 }
 
 func (n *Node) loadNetboxInfos() (err error) {
-	if err = n.loadNodeConfig(); err != nil {
+	if err = n.LoadDeviceConfig(); err != nil {
 		return
 	}
 	if err = n.loadIpamAddresses(); err != nil {

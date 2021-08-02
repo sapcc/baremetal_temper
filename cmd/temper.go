@@ -43,6 +43,10 @@ var runCmd = &cobra.Command{
 				log.Errorf("error node %s: %s", na, err.Error())
 				continue
 			}
+			if err = n.AddTask("node", "setup"); err != nil {
+				log.Error(err)
+				continue
+			}
 			wg.Add(1)
 			for _, t := range tasks {
 				s := strings.Split(t, ".")

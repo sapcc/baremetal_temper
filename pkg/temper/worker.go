@@ -40,8 +40,19 @@ func (w *Worker) Start() {
 			select {
 			case job := <-w.JobChan:
 				var wg sync.WaitGroup
-				cfgCtx, err := task.UnmarshalConfigContext(job.DeviceConfig.ConfigContext)
+				if err := job.LoadDeviceConfig(); err != nil {
+					job.Status = "failed"
+					log.Error(err)
+					return
+				}
+				cfgCtx, err := task.GetTemperConfigContext(job.DeviceConfig.ConfigContext)
 				if err != nil {
+					job.Status = "failed"
+					log.Error(err)
+					return
+				}
+
+				if err := job.AddTask("node", "setup"); err != nil {
 					job.Status = "failed"
 					log.Error(err)
 					return

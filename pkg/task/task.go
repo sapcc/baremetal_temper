@@ -17,9 +17,8 @@
 package task
 
 import (
-	"bytes"
-	"encoding/gob"
 	"encoding/json"
+	"fmt"
 )
 
 type ConfigContext struct {
@@ -46,15 +45,18 @@ type Exec struct {
 	Name string
 }
 
-func UnmarshalConfigContext(data interface{}) (cfgCtx ConfigContext, err error) {
-	cfgCtx = ConfigContext{}
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err = enc.Encode(data); err != nil {
-		return
+func GetTemperConfigContext(data interface{}) (temperCtx ConfigContext, err error) {
+	ctx, ok := data.(map[string]interface{})
+	if !ok {
+		return temperCtx, fmt.Errorf("cannot cast interface to netbox ConfigContext")
 	}
-	if err = json.Unmarshal(buf.Bytes(), &cfgCtx); err != nil {
-		return
+	bm, ok := ctx["baremetal"].(map[string]interface{})
+	if !ok {
+		return temperCtx, fmt.Errorf("cannot cast interface to netbox ConfigContext")
 	}
+	b, err := json.Marshal(bm["temper"])
+	taskCtx := TaskContext{}
+	json.Unmarshal(b, &taskCtx)
+	temperCtx.Baremetal.Temper = taskCtx
 	return
 }

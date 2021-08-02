@@ -47,6 +47,10 @@ var complete = &cobra.Command{
 				continue
 			}
 			wg.Add(1)
+			if err = n.AddTask("node", "setup"); err != nil {
+				log.Error(err)
+				continue
+			}
 			n.AddTask("dns", "create")
 			if diag {
 				n.AddTask("diagnostics", "cablecheck")

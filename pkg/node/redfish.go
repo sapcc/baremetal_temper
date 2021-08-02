@@ -27,12 +27,17 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
+func (n *Node) testRedfishConnection() (err error) {
+	n.log.Debugf("testing redfish connection")
+	if err = n.Clients.Redfish.Connect(); err != nil {
+		panic("cannot connect to redfish api: " + err.Error())
+	}
+	return
+}
+
 //LoadInventory loads the node's inventory via it's redfish api
 func (n *Node) loadInventory() (err error) {
 	n.log.Debug("calling redfish api to load node info")
-	if err = n.Clients.Redfish.Connect(); err != nil {
-		return
-	}
 	defer n.Clients.Redfish.Logout()
 	ch, err := n.Clients.Redfish.Client.Service.Chassis()
 	if err != nil || len(ch) == 0 {
@@ -199,9 +204,6 @@ func (n *Node) addBootInterface(id string, np *redfish.NetworkPort) {
 
 func (n *Node) bootImage() (err error) {
 	n.log.Debugf("booting image for cable check: %s", *n.cfg.Redfish.BootImage)
-	if err = n.Clients.Redfish.Connect(); err != nil {
-		return
-	}
 	defer n.Clients.Redfish.Logout()
 	bootOverride := redfish.Boot{
 		BootSourceOverrideTarget:  redfish.CdBootSourceOverrideTarget,
@@ -361,9 +363,6 @@ func (n *Node) rebootFromVirtualMedia(boot redfish.Boot) (err error) {
 }
 
 func (n *Node) power(forceOff bool, restart bool) (err error) {
-	if err = n.Clients.Redfish.Connect(); err != nil {
-		return
-	}
 	sys, err := n.Clients.Redfish.Client.Service.Systems()
 	if err != nil {
 		return

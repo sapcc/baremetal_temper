@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/mitchellh/go-homedir"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	log "github.com/sirupsen/logrus"
 
@@ -126,14 +125,6 @@ func InitConfig() {
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := homedir.Dir()
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		viper.AddConfigPath(home)
-		viper.SetConfigName("config.yaml")
 	}
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {

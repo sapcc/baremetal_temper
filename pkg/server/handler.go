@@ -69,27 +69,40 @@ func (h *Handler) temperHandler(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) webhookHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	wb := webhookBody{}
+	/*
+		bodyBytes, _ := ioutil.ReadAll(r.Body)
+		fmt.Println(string(bodyBytes))
+		json.Unmarshal(bodyBytes, &wb)
+	*/
 	if err := json.NewDecoder(r.Body).Decode(&wb); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
-	h.l.Debugf("incoming webhook event: %s, region: %s, device-name: %s, status: %s",
-		wb.Event, wb.Data.Site.Slug, wb.Data.Name, wb.Data.Status.Value)
+
+	h.l.Debugf("incoming webhook event: %s, region: %s, device-name: %s, status: %s, role: %s",
+		wb.Event, wb.Data.Site.Slug, wb.Data.Name, wb.Data.Status.Value, wb.Data.Role.Slug)
 	if !strings.Contains(wb.Data.Site.Slug, h.cfg.Region) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	h.l.Debugf("webhook event. status: %s, role: %s", wb.Data.Status.Value, wb.Data.Role.Slug)
 	if wb.Data.Status.Value != "inventory" || wb.Data.Role.Slug != "server" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	h.l.Debugf("webhook event. prechange: %s, postchange: %s", wb.Snapshots.PreChange.Status, wb.Snapshots.PostChange.Status)
-	if wb.Snapshots.PreChange.Status != "inventory" && wb.Snapshots.PostChange.Status == "inventory" {
-		h.l.Debugf("--->temper node: %s", wb.Data.Name)
-		n, _ := node.New(wb.Data.Name, h.cfg)
-		h.t.AddNode(n)
+	// older nebtbox version does not provide snapshots
+	if wb.Snapshots == (webhookBody{}.Snapshots) {
+		if wb.Data.Status.Value == "inventory" {
+			h.l.Debugf("--->temper node: %s", wb.Data.Name)
+			n, _ := node.New(wb.Data.Name, h.cfg)
+			h.t.AddNode(n)
+		}
+	} else {
+		h.l.Debugf("webhook event. snapshots", wb.Snapshots)
+		if wb.Snapshots.PreChange.Status != "inventory" && wb.Snapshots.PostChange.Status == "inventory" {
+			h.l.Debugf("--->temper node: %s", wb.Data.Name)
+			n, _ := node.New(wb.Data.Name, h.cfg)
+			h.t.AddNode(n)
+		}
 	}
-
 	w.WriteHeader(http.StatusOK)
 }
 

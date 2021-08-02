@@ -24,6 +24,15 @@ import (
 )
 
 func (n *Node) initTaskExecs() {
+	n.tasksExecs["node"] = map[string][]*task.Exec{
+		"setup": {
+			{Fn: n.loadNetboxInfos, Name: "node.setup.netbox"},
+			{Fn: n.testRedfishConnection, Name: "node.setup.redfish"},
+			{Fn: func() error { return n.power(false, true) }, Name: "node.setup.power"},
+			{Fn: n.waitPowerStateOn, Name: "node.setup.power"},
+			{Fn: n.loadRedfishInfos, Name: "node.setup.redfish"},
+		},
+	}
 	n.tasksExecs["dns"] = map[string][]*task.Exec{
 		"create": {
 			{Fn: n.createDNSRecords, Name: "dns.create"},
