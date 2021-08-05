@@ -52,7 +52,7 @@ func (n *Node) runACICheck() (err error) {
 	}()
 
 	for iName, i := range n.Interfaces {
-		n.log.Debug("checking interface: %s --> %s", iName, i.Connection)
+		n.log.Debugf("checking interface: %s --> %s", iName, i.Connection)
 		if !strings.Contains(i.Connection, "aci") {
 			continue
 		}

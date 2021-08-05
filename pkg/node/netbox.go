@@ -284,10 +284,11 @@ func (n *Node) getInterfaces() (in []*models.Interface, err error) {
 }
 
 func (n *Node) getInterfaceIP(id string) (ip net.IP, err error) {
-	if n.DeviceConfig.PrimaryIp4 == nil {
+	d, err := n.getDeviceConfig(&id, nil)
+	if d.PrimaryIp4 == nil {
 		return ip, fmt.Errorf("no ip available for switch %s", id)
 	}
-	ip, _, err = net.ParseCIDR(*n.DeviceConfig.PrimaryIp4.Address)
+	ip, _, err = net.ParseCIDR(*d.PrimaryIp4.Address)
 	return
 }
 
@@ -295,18 +296,29 @@ func (n *Node) LoadDeviceConfig() (err error) {
 	if n.DeviceConfig != nil {
 		return
 	}
+	d, err := n.getDeviceConfig(nil, &n.Name)
+	if err != nil {
+		return
+	}
+	n.DeviceConfig = d
+	return
+}
+
+func (n *Node) getDeviceConfig(id, name *string) (d *models.DeviceWithConfigContext, err error) {
 	param := dcim.DcimDevicesListParams{
 		Context: context.Background(),
-		Name:    &n.Name,
 	}
-
+	if id != nil {
+		param.ID = id
+	} else {
+		param.Name = name
+	}
 	l, err := n.Clients.Netbox.Client.Dcim.DcimDevicesList(&param, nil)
 	if err != nil {
 		return
 	}
 	if len(l.Payload.Results) == 0 {
-		return fmt.Errorf("no device found")
+		return d, fmt.Errorf("no device found")
 	}
-	n.DeviceConfig = l.Payload.Results[0]
-	return
+	return l.Payload.Results[0], err
 }
