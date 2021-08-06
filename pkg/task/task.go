@@ -57,6 +57,11 @@ func GetTemperConfigContext(data interface{}) (temperCtx ConfigContext, err erro
 	b, err := json.Marshal(bm["temper"])
 	taskCtx := TaskContext{}
 	json.Unmarshal(b, &taskCtx)
+	for _, t := range taskCtx.Tasks {
+		//remove old error logs
+		t.Error = ""
+	}
+
 	temperCtx.Baremetal.Temper = taskCtx
 	return
 }
