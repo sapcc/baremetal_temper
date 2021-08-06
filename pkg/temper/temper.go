@@ -32,6 +32,7 @@ func (t *Temper) AddNode(node *node.Node) {
 	_, ok := t.nodes[node.Name]
 	if ok {
 		fmt.Println("node: " + node.Name + "already being tempered")
+		return
 	}
 	t.nodes[node.Name] = node
 	t.disp.Dispatch(node)

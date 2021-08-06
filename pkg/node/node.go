@@ -165,11 +165,11 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 
 TasksLoop:
 	for _, t := range n.Tasks {
-		n.log.Infof("executing temper task: %s.%s", t.Service, t.Task)
 		for i, exec := range t.Exec {
 			if t.Status == "done" {
 				continue
 			}
+			n.log.Infof("executing temper task: %s", exec.Name)
 			if err := exec.Fn(); err != nil {
 				if _, ok := err.(*AlreadyExists); ok {
 					if err := n.loadBaremetalNodeInfo(); err != nil {

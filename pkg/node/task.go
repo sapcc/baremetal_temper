@@ -29,7 +29,7 @@ func (n *Node) initTaskExecs() {
 			{Fn: n.loadNetboxInfos, Name: "node.setup.netbox"},
 			{Fn: n.testRedfishConnection, Name: "node.setup.redfish"},
 			{Fn: func() error { return n.power(false, true) }, Name: "node.setup.power"},
-			{Fn: n.waitPowerStateOn, Name: "node.setup.power"},
+			{Fn: n.waitPowerStateOn, Name: "node.setup.power.wait"},
 			{Fn: n.loadRedfishInfos, Name: "node.setup.redfish"},
 		},
 	}

@@ -52,7 +52,6 @@ func (n *Node) runACICheck() (err error) {
 	}()
 
 	for iName, i := range n.Interfaces {
-		n.log.Debugf("checking interface: %s --> %s", iName, i.Connection)
 		if !strings.Contains(i.Connection, "aci") {
 			continue
 		}
@@ -65,6 +64,7 @@ func (n *Node) runACICheck() (err error) {
 			noLldp = append(noLldp, iName+"(no_aci_ip)")
 			continue
 		}
+		n.log.Debugf("checking interface: %s --> %s", iName, i.Connection)
 		co, err = aci.GetContainer(i.ConnectionIP)
 		if err != nil {
 			noLldp = append(noLldp, iName+"("+err.Error()+")")
