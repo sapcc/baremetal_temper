@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -60,14 +61,12 @@ func NewDellClient(gCfg gofish.ClientConfig, log *log.Entry) (c *DellClient) {
 }
 
 func (d DellClient) Run() (err error) {
-	client, err := gofish.Connect(d.gCfg)
-	defer client.Logout()
-	if err != nil {
+	if err = d.connect(); err != nil {
 		return
 	}
-	d.client = client
+	defer d.client.Logout()
 	payload := iDracDiagnostics{RebootJobType: "GracefulRebootWithForcedShutdown", RunMode: "Extended"} //Express
-	resp, err := client.Post("/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.RunePSADiagnostics", payload)
+	resp, err := d.client.Post("/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.RunePSADiagnostics", payload)
 	var jobID string
 	if err != nil {
 		idracErr := &iDRACError{}
@@ -134,12 +133,21 @@ func (d DellClient) Run() (err error) {
 	return
 }
 
-func (d DellClient) getJobByID(id string) (j iDRACJob, err error) {
-	resp, err := d.client.Get("/redfish/v1/Managers/iDRAC.Embedded.1/Jobs/" + id)
+func (d DellClient) connect() (err error) {
+	client, err := gofish.Connect(d.gCfg)
+	defer client.Logout()
 	if err != nil {
 		return
 	}
+	d.client = client
+	return
+}
 
+func (d DellClient) getJobByID(id string) (j iDRACJob, err error) {
+	resp, err := d.requestRetry(d.client.Get, "/redfish/v1/Managers/iDRAC.Embedded.1/Jobs/"+id, 200)
+	if err != nil {
+		return
+	}
 	defer resp.Body.Close()
 	err = json.NewDecoder(resp.Body).Decode(&j)
 	if err != nil {
@@ -149,7 +157,7 @@ func (d DellClient) getJobByID(id string) (j iDRACJob, err error) {
 }
 
 func (d DellClient) findDiagnosticJob() (j iDRACJob, err error) {
-	resp, err := d.client.Get("/redfish/v1/Managers/iDRAC.Embedded.1/Jobs")
+	resp, err := d.requestRetry(d.client.Get, "/redfish/v1/Managers/iDRAC.Embedded.1/Jobs", 200)
 	if err != nil {
 		return
 	}
@@ -213,5 +221,23 @@ func (d DellClient) getDiagnosticsResult() (results map[string]int, err error) {
 		}
 	}
 
+	return
+}
+
+func (d DellClient) requestRetry(fn func(url string) (*http.Response, error), url string, statusCode int) (resp *http.Response, err error) {
+	cf := wait.ConditionFunc(func() (bool, error) {
+		r, err := fn(url)
+		if err != nil {
+			return false, nil
+		}
+		if r.StatusCode != statusCode {
+			return false, nil
+		}
+		resp = r
+		return true, nil
+	})
+	if err = wait.Poll(10*time.Second, 5*time.Minute, cf); err != nil {
+		return resp, err
+	}
 	return
 }
