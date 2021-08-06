@@ -109,16 +109,8 @@ func (n *Node) loadIpamAddresses() (err error) {
 
 //SetStatus does not return error to not trigger errorhandler and cleanup of node
 func (n *Node) SetStatus() (err error) {
-	errors := make([]string, 0)
-	for _, t := range n.Tasks {
-		if t.Error != "" {
-			m := fmt.Sprintf("%s.%s failed: %s", t.Service, t.Task, t.Error)
-			errors = append(errors, m)
-		}
-	}
-
 	if n.Status == "failed" {
-		err = n.setStatusFailed(strings.Join(errors, " | "))
+		err = n.setStatusFailed()
 	} else {
 		err = n.setStatusStaged()
 	}
@@ -163,11 +155,10 @@ func (n *Node) setStatusStaged() error {
 }
 
 //SetStatusFailed sets status to failed in netbox
-func (n *Node) setStatusFailed(comments string) (err error) {
-	comments = "temper failed: " + comments
+func (n *Node) setStatusFailed() (err error) {
 	p, err := n.updateNodeInfo(models.WritableDeviceWithConfigContext{
 		Status:   models.DeviceWithConfigContextStatusValueFailed,
-		Comments: comments,
+		Comments: "temper failed: check config context",
 	})
 	if err != nil {
 		n.log.Error(err)

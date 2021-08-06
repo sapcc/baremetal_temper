@@ -29,10 +29,12 @@ func New(numWorkers int) *Temper {
 
 func (t *Temper) AddNode(node *node.Node) {
 	t.Lock()
-	_, ok := t.nodes[node.Name]
+	n, ok := t.nodes[node.Name]
 	if ok {
-		fmt.Println("node: " + node.Name + "already being tempered")
-		return
+		if n.Status == "progress" {
+			fmt.Println("node: " + node.Name + "already being tempered")
+			return
+		}
 	}
 	t.nodes[node.Name] = node
 	t.disp.Dispatch(node)
@@ -48,7 +50,7 @@ func (t *Temper) cleanup() {
 	t.Lock()
 	defer t.Unlock()
 	for i, n := range t.nodes {
-		if n.Status != "staged" {
+		if n.Status != "progress" {
 			delete(t.nodes, i)
 		}
 	}

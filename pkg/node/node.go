@@ -132,7 +132,7 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 	})
 	n = &Node{
 		Name:       name,
-		Status:     "planned",
+		Status:     "progress",
 		cfg:        cfg,
 		Tasks:      make([]*task.Task, 0),
 		log:        ctxLogger,
@@ -166,7 +166,7 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
 TasksLoop:
 	for _, t := range n.Tasks {
 		for i, exec := range t.Exec {
-			if t.Status == "done" {
+			if t.Status == "success" || t.Status == "done" {
 				continue
 			}
 			n.log.Infof("executing temper task: %s", exec.Name)
