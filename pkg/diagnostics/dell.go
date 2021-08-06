@@ -66,7 +66,7 @@ func (d DellClient) Run() (err error) {
 	}
 	defer d.client.Logout()
 	payload := iDracDiagnostics{RebootJobType: "GracefulRebootWithForcedShutdown", RunMode: "Extended"} //Express
-	resp, err := d.client.Post("/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.RunePSADiagnostics", payload)
+	resp, err := d.requestPostRetry("/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.RunePSADiagnostics", payload)
 	var jobID string
 	if err != nil {
 		idracErr := &iDRACError{}
@@ -133,18 +133,13 @@ func (d DellClient) Run() (err error) {
 	return
 }
 
-func (d DellClient) connect() (err error) {
-	client, err := gofish.Connect(d.gCfg)
-	defer client.Logout()
-	if err != nil {
-		return
-	}
-	d.client = client
+func (d *DellClient) connect() (err error) {
+	d.client, err = gofish.Connect(d.gCfg)
 	return
 }
 
 func (d DellClient) getJobByID(id string) (j iDRACJob, err error) {
-	resp, err := d.requestRetry(d.client.Get, "/redfish/v1/Managers/iDRAC.Embedded.1/Jobs/"+id, 200)
+	resp, err := d.requestRetry("/redfish/v1/Managers/iDRAC.Embedded.1/Jobs/"+id, 200)
 	if err != nil {
 		return
 	}
@@ -157,7 +152,7 @@ func (d DellClient) getJobByID(id string) (j iDRACJob, err error) {
 }
 
 func (d DellClient) findDiagnosticJob() (j iDRACJob, err error) {
-	resp, err := d.requestRetry(d.client.Get, "/redfish/v1/Managers/iDRAC.Embedded.1/Jobs", 200)
+	resp, err := d.requestRetry("/redfish/v1/Managers/iDRAC.Embedded.1/Jobs", 200)
 	if err != nil {
 		return
 	}
@@ -188,7 +183,7 @@ func (d DellClient) getDiagnosticsResult() (results map[string]int, err error) {
 	results = make(map[string]int)
 
 	payload := iDracDiagnostics{ShareType: "Local"}
-	resp, err := d.client.Post("/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.ExportePSADiagnosticsResult", payload)
+	resp, err := d.requestPostRetry("/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.ExportePSADiagnosticsResult", payload)
 	if err != nil {
 		return
 	}
@@ -224,20 +219,48 @@ func (d DellClient) getDiagnosticsResult() (results map[string]int, err error) {
 	return
 }
 
-func (d DellClient) requestRetry(fn func(url string) (*http.Response, error), url string, statusCode int) (resp *http.Response, err error) {
+func (d DellClient) requestRetry(url string, statusCode int) (*http.Response, error) {
+	var err error
+	var resp *http.Response
 	cf := wait.ConditionFunc(func() (bool, error) {
-		r, err := fn(url)
+		resp, err = d.client.Get(url)
 		if err != nil {
 			return false, nil
 		}
-		if r.StatusCode != statusCode {
+		if resp.StatusCode != statusCode {
 			return false, nil
 		}
-		resp = r
 		return true, nil
 	})
-	if err = wait.Poll(10*time.Second, 5*time.Minute, cf); err != nil {
+	if errWait := wait.Poll(10*time.Second, 5*time.Minute, cf); errWait != nil {
 		return resp, err
 	}
-	return
+	return resp, err
+}
+
+func (d DellClient) requestPostRetry(url string, payload interface{}) (*http.Response, error) {
+	var err error
+	var resp *http.Response
+	cf := wait.ConditionFunc(func() (bool, error) {
+		resp, err = d.client.Post(url, payload)
+		if err != nil {
+			idracErr := &iDRACError{}
+			if errjson := json.Unmarshal([]byte(strings.Replace(err.Error(), "400: ", "", 1)), idracErr); errjson != nil {
+				return false, nil
+			}
+			if idracErr.Error.Message[0].Message == "A Remote Diagnostic (ePSA) job already exists." {
+				d.log.Errorf("remote diagnostic (ePSA) job already running")
+				return true, nil
+			}
+			return false, nil
+		}
+		if resp.StatusCode != 201 && resp.StatusCode != 202 {
+			return false, nil
+		}
+		return true, nil
+	})
+	if errWait := wait.Poll(15*time.Second, 10*time.Minute, cf); errWait != nil {
+		return resp, err
+	}
+	return resp, err
 }

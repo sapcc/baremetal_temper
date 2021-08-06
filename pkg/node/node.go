@@ -188,7 +188,7 @@ TasksLoop:
 
 			} else {
 				if i == len(t.Exec)-1 {
-					t.Status = "done"
+					t.Status = "success"
 				}
 			}
 		}
