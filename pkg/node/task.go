@@ -30,6 +30,7 @@ func (n *Node) initTaskExecs() {
 			{Fn: n.testRedfishConnection, Name: "node.setup.redfish"},
 			{Fn: func() error { return n.power(false, true) }, Name: "node.setup.power"},
 			{Fn: n.waitPowerStateOn, Name: "node.setup.power.wait"},
+			{Fn: TimeoutTask(2 * time.Minute), Name: "node.setup.ready"},
 			{Fn: n.loadRedfishInfos, Name: "node.setup.redfish"},
 		},
 	}
