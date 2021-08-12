@@ -1,0 +1,91 @@
+/**
+ * Copyright 2021 SAP SE
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package model
+
+type InspectonData struct {
+	RootDisk      RootDisk  `json:"root_disk"`
+	BootInterface string    `json:"boot_interface"`
+	Inventory     Inventory `json:"inventory"`
+	Logs          string    `json:"logs"`
+}
+
+type Inventory struct {
+	BmcAddress   string       `json:"bmc_address"`
+	SystemVendor SystemVendor `json:"system_vendor"`
+	Interfaces   []Interface  `json:"interfaces"`
+	Boot         Boot         `json:"boot"`
+	Disks        []Disk       `json:"disks"`
+	Memory       Memory       `json:"memory"`
+	CPU          CPU          `json:"cpu"`
+}
+
+type Interface struct {
+	Lldp       map[string]string `json:"lldp"`
+	Product    string            `json:"product"`
+	Vendor     *string           `json:"vendor"`
+	Name       string            `json:"name"`
+	HasCarrier bool              `json:"has_carrier"`
+	IP4Address string            `json:"ipv4_address"`
+	ClientID   *string           `json:"client_id"`
+	MacAddress string            `json:"mac_address"`
+}
+
+type Boot struct {
+	CurrentBootMode string `json:"current_boot_mode"`
+	PxeInterface    string `json:"pxe_interface"`
+}
+
+type SystemVendor struct {
+	SerialNumber string `json:"serial_number"`
+	ProductName  string `json:"product_name"`
+	Manufacturer string `json:"manufacturer"`
+	Model        string
+}
+
+type Disk struct {
+	Rotational         bool    `json:"rotational"`
+	Vendor             string  `json:"vendor"`
+	Name               string  `json:"name"`
+	Hctl               *string `json:"hctl"`
+	WwnVendorExtension *string `json:"wwn_vendor_extension"`
+	WwnWithExtension   *string `json:"wwn_with_extension"`
+	Model              string  `json:"model"`
+	Wwn                *string `json:"wwn"`
+	Serial             *string `json:"serial"`
+	Size               int64   `json:"size"`
+}
+
+type Memory struct {
+	PhysicalMb int     `json:"physical_mb"`
+	Total      float32 `json:"total"`
+}
+
+type CPU struct {
+	Count        int      `json:"count"`
+	Frequency    string   `json:"frequency"`
+	Flags        []string `json:"flags"`
+	Architecture string   `json:"architecture"`
+}
+
+type RootDisk struct {
+	Rotational bool   `json:"rotational"`
+	Vendor     string `json:"vendor"`
+	Name       string `json:"name"`
+	Model      string `json:"model"`
+	Serial     string `json:"serial"`
+	Size       int64  `json:"size"`
+}
