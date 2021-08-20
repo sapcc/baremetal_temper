@@ -20,28 +20,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sapcc/baremetal_temper/pkg/task"
+	"github.com/sapcc/baremetal_temper/pkg/netbox"
 )
 
 func (n *Node) initTaskExecs() {
-	n.tasksExecs["node"] = map[string][]*task.Exec{
-		"setup": {
-			{Fn: n.loadNetboxInfos, Name: "node.setup.netbox"},
-			{Fn: n.testRedfishConnection, Name: "node.setup.redfish"},
-			{Fn: func() error { return n.power(false, true) }, Name: "node.setup.power"},
-			{Fn: n.waitPowerStateOn, Name: "node.setup.power.wait"},
-			{Fn: TimeoutTask(2 * time.Minute), Name: "node.setup.ready"},
-			{Fn: n.loadRedfishInfos, Name: "node.setup.redfish"},
-		},
-	}
-	n.tasksExecs["dns"] = map[string][]*task.Exec{
+	n.tasksExecs["dns"] = map[string][]*netbox.Exec{
 		"create": {
 			{Fn: n.createDNSRecords, Name: "dns.create"},
 		},
 	}
 	if *n.cfg.Redfish.BootImage == "" {
 		n.log.Warning("did not find boot image for cable check. run check without it")
-		n.tasksExecs["diagnostics"] = map[string][]*task.Exec{
+		n.tasksExecs["diagnostics"] = map[string][]*netbox.Exec{
 			"cablecheck": {
 				{Fn: n.runACICheck, Name: "diagnostics.cablecheck.aci"},
 				//{Exec: n.runAristaCheck, Name: "arista_cable_check"},
@@ -49,26 +39,23 @@ func (n *Node) initTaskExecs() {
 			"hardwarecheck": {
 				{Fn: n.runHardwareChecks, Name: "diagnostics.hardwarecheck"},
 			},
-			"bootimage": {
-				{Fn: n.bootImage, Name: "diagnostics.bootimage"},
-			},
 		}
 	} else {
-		n.tasksExecs["diagnostics"] = map[string][]*task.Exec{
+		n.tasksExecs["diagnostics"] = map[string][]*netbox.Exec{
 			"cablecheck": {
-				{Fn: n.bootImage, Name: "diagnostics.cablecheck.bootimage"},
+				{Fn: func() error { return n.Redfish.BootFromImage(*n.cfg.Redfish.BootImage) }, Name: "diagnostics.cablecheck.bootimage"},
 				{Fn: TimeoutTask(10 * time.Minute), Name: "diagnostics.cablecheck.bootimage.wait"},
 				{Fn: n.runACICheck, Name: "diagnostics.cablecheck.aci"},
 				//{Exec: n.runAristaCheck, Name: "arista_cable_check"},
-				{Fn: n.ejectMedia, Name: "diagnostics.cablecheck.bootimage.eject"},
-				{Fn: func() error { return n.power(false, true) }, Name: "diagnostics.cablecheck.reboot"},
+				{Fn: n.Redfish.EjectMedia, Name: "diagnostics.cablecheck.bootimage.eject"},
+				{Fn: func() error { return n.Redfish.Power(false, true) }, Name: "diagnostics.cablecheck.reboot"},
 			},
 			"hardwarecheck": {
 				{Fn: n.runHardwareChecks, Name: "diagnostics.cablecheck.hardwarecheck"},
 			},
 		}
 	}
-	n.tasksExecs["ironic"] = map[string][]*task.Exec{
+	n.tasksExecs["ironic"] = map[string][]*netbox.Exec{
 		"create": {
 			{Fn: n.create, Name: "ironic.create"},
 			{Fn: n.checkCreated, Name: "ironic.create.check"},
@@ -88,16 +75,27 @@ func (n *Node) initTaskExecs() {
 			{Fn: n.prepare, Name: "ironic.prepare"},
 		},
 	}
-	n.tasksExecs["netbox"] = map[string][]*task.Exec{
+	n.tasksExecs["netbox"] = map[string][]*netbox.Exec{
 		"sync": {
-			{Fn: n.update, Name: "netbox.sync"},
+			{Fn: func() error {
+				d, err := n.Redfish.GetData()
+				if err != nil {
+					return err
+				}
+				return n.Netbox.Update(d.Inventory.SystemVendor.SerialNumber)
+			}, Name: "netbox.sync"},
+		},
+		"writeLocalContextData": {
+			{Fn: func() error {
+				return n.Netbox.WriteLocalContextData(n.Tasks)
+			}, Name: "netbox.writeLocalContextData"},
 		},
 	}
-	n.tasksExecs["firmware"] = map[string][]*task.Exec{
+	n.tasksExecs["firmware"] = map[string][]*netbox.Exec{
 		"profile": {},
 		"update":  {},
 	}
-	n.tasksExecs["bios"] = map[string][]*task.Exec{
+	n.tasksExecs["bios"] = map[string][]*netbox.Exec{
 		"profile": {},
 		"update":  {},
 	}
@@ -105,11 +103,11 @@ func (n *Node) initTaskExecs() {
 
 func (n *Node) AddTask(service, taskName string) error {
 	if n.Tasks == nil {
-		n.Tasks = make([]*task.Task, 0)
+		n.Tasks = make([]*netbox.Task, 0)
 	}
 	if taskName == "all" {
 		for t, e := range n.tasksExecs[service] {
-			t := &task.Task{
+			t := &netbox.Task{
 				Service: service,
 				Task:    t,
 				Exec:    e,
@@ -123,7 +121,7 @@ func (n *Node) AddTask(service, taskName string) error {
 		return fmt.Errorf("unknown task")
 	}
 
-	t := &task.Task{
+	t := &netbox.Task{
 		Service: service,
 		Task:    taskName,
 		Exec:    execs,
@@ -132,9 +130,9 @@ func (n *Node) AddTask(service, taskName string) error {
 	return nil
 }
 
-func (n *Node) MergeTaskWithContext(cfgCtx task.ConfigContext) error {
+func (n *Node) MergeTaskWithContext(cfgCtx netbox.ConfigContext) error {
 	if n.Tasks == nil {
-		n.Tasks = make([]*task.Task, 0)
+		n.Tasks = make([]*netbox.Task, 0)
 	}
 	for _, t := range cfgCtx.Baremetal.Temper.Tasks {
 		execs, ok := n.tasksExecs[t.Service][t.Task]

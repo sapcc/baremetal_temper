@@ -101,9 +101,11 @@ func (n *Node) getRules() (r config.Rule, err error) {
 		return r, fmt.Errorf("Error parsing rules: %s", err.Error())
 	}
 
+	data, err := n.Redfish.GetData()
 	out := new(bytes.Buffer)
 	d := map[string]interface{}{
-		"node": n,
+		"node":      n.Name,
+		"inventory": data.Inventory,
 	}
 	err = t.Execute(out, d)
 	if err != nil {
@@ -114,7 +116,11 @@ func (n *Node) getRules() (r config.Rule, err error) {
 }
 
 func (n *Node) getRootDeviceSize() (size int64, err error) {
-	size = n.InspectionData.RootDisk.Size / 1024 / 1024 / 1024
+	data, err := n.Redfish.GetData()
+	if err != nil {
+		return
+	}
+	size = data.RootDisk.Size / 1024 / 1024 / 1024
 	l := len(strconv.FormatInt(size, 10))
 	switch l {
 	case 3:
@@ -130,6 +136,10 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 	if err != nil {
 		return
 	}
+	data, err := n.Redfish.GetData()
+	if err != nil {
+		return
+	}
 	mem := 0.1
 	disk := 0.2
 	cpu := 0.1
@@ -140,9 +150,13 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 			return false, err
 		}
 		for _, f := range fs {
-			deltaMem := calcDelta(f.RAM, n.InspectionData.Inventory.Memory.PhysicalMb)
-			deltaDisk := calcDelta(f.Disk, int(n.InspectionData.RootDisk.Size/1024/1024/1024))
-			deltaCPU := calcDelta(f.VCPUs, n.InspectionData.Inventory.CPU.Count)
+			//if !strings.HasPrefix(f.Name, "hv_") {
+			//	continue
+			//}
+
+			deltaMem := calcDelta(f.RAM, data.Inventory.Memory.PhysicalMb)
+			deltaDisk := calcDelta(f.Disk, int(data.RootDisk.Size/1024/1024/1024))
+			deltaCPU := calcDelta(f.VCPUs, data.Inventory.CPU.Count)
 			if deltaMem <= mem && deltaDisk <= disk && deltaCPU <= cpu {
 				mem = deltaMem
 				disk = deltaDisk
@@ -156,8 +170,8 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 	if name == "" {
 		return name, fmt.Errorf("no matching flavor found for node")
 	}
-	n.InspectionData.Inventory.Memory.PhysicalMb = fl.RAM
-	n.InspectionData.RootDisk.Size = int64(fl.Disk)
-	n.InspectionData.Inventory.CPU.Count = fl.VCPUs
+	data.Inventory.Memory.PhysicalMb = fl.RAM
+	data.RootDisk.Size = int64(fl.Disk)
+	data.Inventory.CPU.Count = fl.VCPUs
 	return
 }

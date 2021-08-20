@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/netbox-community/go-netbox/netbox/models"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sapcc/baremetal_temper/pkg/node"
 	"github.com/stretchr/testify/assert"
@@ -34,7 +33,6 @@ func TestDispatcher(t *testing.T) {
 
 	n, _ := node.New("test", config.Config{})
 
-	n.DeviceConfig = &models.DeviceWithConfigContext{}
 	d.Dispatch(n)
 
 	assert.Equal(t, n.Status, "progress", "expects node job status to be 'progress'")

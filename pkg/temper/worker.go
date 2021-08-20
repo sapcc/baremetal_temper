@@ -20,7 +20,6 @@ import (
 	"sync"
 
 	"github.com/sapcc/baremetal_temper/pkg/node"
-	"github.com/sapcc/baremetal_temper/pkg/task"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -40,19 +39,8 @@ func (w *Worker) Start() {
 			select {
 			case job := <-w.JobChan:
 				var wg sync.WaitGroup
-				if err := job.LoadDeviceConfig(); err != nil {
-					job.Status = "failed"
-					log.Error(err)
-					return
-				}
-				cfgCtx, err := task.GetTemperConfigContext(job.DeviceConfig.ConfigContext)
+				cfgCtx, err := job.Netbox.GetTemperConfigContext()
 				if err != nil {
-					job.Status = "failed"
-					log.Error(err)
-					return
-				}
-
-				if err := job.AddTask("node", "setup"); err != nil {
 					job.Status = "failed"
 					log.Error(err)
 					return
@@ -62,9 +50,17 @@ func (w *Worker) Start() {
 					log.Error(err)
 					return
 				}
+				if err = job.Setup(); err != nil {
+					job.Status = "failed"
+					log.Error(err)
+					return
+				}
 				wg.Add(1)
 				job.Temper(true, &wg)
 				wg.Wait()
+				if err = job.Netbox.WriteLocalContextData(job.Tasks); err != nil {
+					log.Error(err)
+				}
 			case <-w.Quit:
 				close(w.JobChan)
 				return
