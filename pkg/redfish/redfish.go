@@ -19,33 +19,133 @@ package redfish
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/clients"
-	"github.com/sapcc/baremetal_temper/pkg/node"
+	"github.com/sapcc/baremetal_temper/pkg/config"
+	"github.com/stmcginnis/gofish"
 	"github.com/stmcginnis/gofish/redfish"
 	"k8s.io/apimachinery/pkg/util/wait"
+
+	log "github.com/sirupsen/logrus"
 )
 
+type Data struct {
+	RootDisk      RootDisk  `json:"root_disk"`
+	BootInterface string    `json:"boot_interface"`
+	Inventory     Inventory `json:"inventory"`
+	Logs          string    `json:"logs"`
+}
+
+type Inventory struct {
+	BmcAddress   string       `json:"bmc_address"`
+	SystemVendor SystemVendor `json:"system_vendor"`
+	Interfaces   []Interface  `json:"interfaces"`
+	Boot         Boot         `json:"boot"`
+	Disks        []Disk       `json:"disks"`
+	Memory       Memory       `json:"memory"`
+	CPU          CPU          `json:"cpu"`
+}
+
+type Interface struct {
+	Lldp           map[string]string      `json:"lldp"`
+	Product        string                 `json:"product"`
+	Vendor         *string                `json:"vendor"`
+	Name           string                 `json:"name"`
+	HasCarrier     bool                   `json:"has_carrier"`
+	IP4Address     string                 `json:"ipv4_address"`
+	ClientID       *string                `json:"client_id"`
+	MacAddress     string                 `json:"mac_address"`
+	PortLinkStatus redfish.PortLinkStatus `json:"-"`
+	Nic            int                    `json:"-"`
+	Port           int                    `json:"-"`
+}
+
+type Boot struct {
+	CurrentBootMode string `json:"current_boot_mode"`
+	PxeInterface    string `json:"pxe_interface"`
+}
+
+type SystemVendor struct {
+	SerialNumber string `json:"serial_number"`
+	ProductName  string `json:"product_name"`
+	Manufacturer string `json:"manufacturer"`
+	Model        string
+}
+
+type Disk struct {
+	Rotational         bool    `json:"rotational"`
+	Vendor             string  `json:"vendor"`
+	Name               string  `json:"name"`
+	Hctl               *string `json:"hctl"`
+	WwnVendorExtension *string `json:"wwn_vendor_extension"`
+	WwnWithExtension   *string `json:"wwn_with_extension"`
+	Model              string  `json:"model"`
+	Wwn                *string `json:"wwn"`
+	Serial             *string `json:"serial"`
+	Size               int64   `json:"size"`
+}
+
+type Memory struct {
+	PhysicalMb int     `json:"physical_mb"`
+	Total      float32 `json:"total"`
+}
+
+type CPU struct {
+	Count        int      `json:"count"`
+	Frequency    string   `json:"frequency"`
+	Flags        []string `json:"flags"`
+	Architecture string   `json:"architecture"`
+}
+
+type RootDisk struct {
+	Rotational bool   `json:"rotational"`
+	Vendor     string `json:"vendor"`
+	Name       string `json:"name"`
+	Model      string `json:"model"`
+	Serial     string `json:"serial"`
+	Size       int64  `json:"size"`
+}
+
 type Redfish interface {
+	GetData() (*Data, error)
+	GetClientConfig() *gofish.ClientConfig
 	getVendorData() (err error)
 	getMemory() (err error)
-	getCPU() (err error)
+	getCPUs() (err error)
 	getDisks() (err error)
 	getNetworkDevices() (err error)
+	rebootFromVirtualMedia(boot redfish.Boot) (err error)
+	mapInterfaceToNetbox(id string, slot int) (name string, port, nic int)
 
-	power(forceOff bool, restart bool) (err error)
-	waitPowerStateOn() (err error)
-	bootFromImage() (err error)
+	Power(forceOff bool, restart bool) (err error)
+	WaitPowerStateOn() (err error)
+	BootFromImage(path string) (err error)
+	EjectMedia() (err error)
+	InsertMedia(image string) (err error)
 }
 
 type Default struct {
 	client *clients.Redfish
-	node   *node.Node
+	log    *log.Entry
+	cfg    config.Config
+	Data   *Data
 }
 
-func (p Default) init() (err error) {
+func NewDefault(remoteIP string, cfg config.Config, ctxLogger *log.Entry) (Redfish, error) {
+	c := clients.NewRedfish(cfg, ctxLogger)
+	c.SetEndpoint(remoteIP)
+	r := &Default{client: c, log: ctxLogger, cfg: cfg}
+	return r, r.check()
+}
+
+func (p Default) check() (err error) {
+	defer p.client.Logout()
+	if err = p.client.Connect(); err != nil {
+		return
+	}
 	ch, err := p.client.Client.Service.Chassis()
 	if err != nil || len(ch) == 0 {
 		return fmt.Errorf("redfish chassis != 1")
@@ -58,7 +158,42 @@ func (p Default) init() (err error) {
 	return
 }
 
-func (p Default) power(forceOff bool, restart bool) (err error) {
+func (p *Default) GetClientConfig() *gofish.ClientConfig {
+	return p.client.ClientConfig
+}
+
+func (p *Default) GetData() (*Data, error) {
+	if p.Data != nil {
+		return p.Data, nil
+	}
+	if err := p.client.Connect(); err != nil {
+		return p.Data, err
+	}
+	defer p.client.Logout()
+	p.Data = &Data{}
+	if err := p.getVendorData(); err != nil {
+		return p.Data, err
+	}
+	if err := p.getDisks(); err != nil {
+		return p.Data, err
+	}
+	if err := p.getCPUs(); err != nil {
+		return p.Data, err
+	}
+	if err := p.getMemory(); err != nil {
+		return p.Data, err
+	}
+	if err := p.getNetworkDevices(); err != nil {
+		return p.Data, err
+	}
+	return p.Data, nil
+}
+
+func (p *Default) Power(forceOff bool, restart bool) (err error) {
+	defer p.client.Logout()
+	if err = p.client.Connect(); err != nil {
+		return
+	}
 	s, err := p.client.Client.Service.Systems()
 	if err != nil {
 		return
@@ -69,9 +204,9 @@ func (p Default) power(forceOff bool, restart bool) (err error) {
 	if restart {
 		return s[0].Reset(redfish.ForceRestartResetType)
 	}
-	//n.log.Debugf("node power state: %s", s[0].PowerState)
-	if s[0].PowerState != redfish.OnPowerState {
-		//n.log.Debug("node power on")
+	p.log.Debugf("node power state: %s", s[0].PowerState)
+	if s[0].PowerState == redfish.OffPowerState {
+		p.log.Debug("node power on")
 		err = s[0].Reset(redfish.OnResetType)
 		// lets give the server some time to fully boot,
 		// otherwise redfish resources may not be ready (e.g. ports)
@@ -80,16 +215,20 @@ func (p Default) power(forceOff bool, restart bool) (err error) {
 	return
 }
 
-func (p *Default) waitPowerStateOn() (err error) {
-	//n.log.Infof("waiting for node to power on")
+func (p *Default) WaitPowerStateOn() (err error) {
+	defer p.client.Logout()
+	if err = p.client.Connect(); err != nil {
+		return
+	}
+	p.log.Infof("waiting for node to power on")
 	cf := wait.ConditionFunc(func() (bool, error) {
 		sys, err := p.client.Client.Service.Systems()
 		if err != nil {
 			return false, fmt.Errorf("cannot power on node")
 		}
-		p := sys[0].PowerState
-		//n.log.Debugf("node power state: %s", p)
-		if p != redfish.OnPowerState {
+		power := sys[0].PowerState
+		p.log.Debugf("node power state: %s", p)
+		if power != redfish.OnPowerState {
 			return false, nil
 		}
 		return true, nil
@@ -97,7 +236,7 @@ func (p *Default) waitPowerStateOn() (err error) {
 	return wait.Poll(10*time.Second, 5*time.Minute, cf)
 }
 
-func (p Default) getVendorData() (err error) {
+func (p *Default) getVendorData() (err error) {
 	ch, err := p.client.Client.Service.Chassis()
 	if err != nil {
 		return
@@ -106,13 +245,13 @@ func (p Default) getVendorData() (err error) {
 	if err != nil {
 		return
 	}
-	p.node.InspectionData.Inventory.SystemVendor.Manufacturer = ch[0].Manufacturer
-	p.node.InspectionData.Inventory.SystemVendor.SerialNumber = ch[0].SerialNumber
-	p.node.InspectionData.Inventory.SystemVendor.Model = s[0].Model
-	p.node.InspectionData.Inventory.SystemVendor.ProductName = ch[0].Model
+	p.Data.Inventory.SystemVendor.Manufacturer = ch[0].Manufacturer
+	p.Data.Inventory.SystemVendor.SerialNumber = ch[0].SerialNumber
+	p.Data.Inventory.SystemVendor.Model = s[0].Model
+	p.Data.Inventory.SystemVendor.ProductName = ch[0].Model
 	return
 }
-func (p Default) getMemory() (err error) {
+func (p *Default) getDisks() (err error) {
 	s, err := p.client.Client.Service.Systems()
 	if err != nil {
 		return
@@ -121,7 +260,7 @@ func (p Default) getMemory() (err error) {
 	rootDisk := RootDisk{
 		Rotational: true,
 	}
-	p.node.InspectionData.Inventory.Disks = make([]node.Disk, 0)
+	p.Data.Inventory.Disks = make([]Disk, 0)
 	re := regexp.MustCompile(`^(?i)(ssd|hdd)\s*(\d+)$`)
 	for _, s := range st {
 		ds, err := s.Drives()
@@ -154,14 +293,14 @@ func (p Default) getMemory() (err error) {
 				}
 			}
 
-			p.node.InspectionData.Inventory.Disks = append(p.node.InspectionData.Inventory.Disks, disk)
+			p.Data.Inventory.Disks = append(p.Data.Inventory.Disks, disk)
 		}
 	}
 
-	p.node.InspectionData.RootDisk = rootDisk
+	p.Data.RootDisk = rootDisk
 	return
 }
-func (p Default) setCPUs() (err error) {
+func (p *Default) getCPUs() (err error) {
 	s, err := p.client.Client.Service.Systems()
 	if err != nil {
 		return
@@ -170,19 +309,18 @@ func (p Default) setCPUs() (err error) {
 	if err != nil || len(cpu) == 0 {
 		return
 	}
-	p.node.InspectionData.Inventory.CPU.Count = s[0].ProcessorSummary.LogicalProcessorCount / 2 // threads
-	p.node.InspectionData.Inventory.CPU.Architecture = strings.Replace(string(cpu[0].InstructionSet), "-", "_", 1)
+	p.Data.Inventory.CPU.Count = s[0].ProcessorSummary.LogicalProcessorCount / 2 // threads
+	p.Data.Inventory.CPU.Architecture = strings.Replace(string(cpu[0].InstructionSet), "-", "_", 1)
 	return
 }
 
-func (p Default) setNetworkDevicesData() (err error) {
+func (p *Default) getNetworkDevices() (err error) {
 	ch, err := p.client.Client.Service.Chassis()
 	if err != nil {
 		return
 	}
-	pciHigh, pciLow := 0, 0
-	intfs := make(map[string]node.NodeInterface, 0)
-	p.node.InspectionData.Inventory.Interfaces = make([]node.Interface, 0)
+
+	p.Data.Inventory.Interfaces = make([]Interface, 0)
 	na, err := ch[0].NetworkAdapters()
 	if err != nil {
 		return
@@ -190,60 +328,66 @@ func (p Default) setNetworkDevicesData() (err error) {
 
 	for _, a := range na {
 		slot := a.Controllers[0].Location.PartLocation.LocationOrdinalValue
-		if slot > pciHigh {
-			pciHigh = slot
-		} else if slot < pciLow {
-			pciLow = slot
-		}
 		nps, err := a.NetworkPorts()
 		if err != nil {
 			return err
 		}
 		for _, np := range nps {
 			mac := np.AssociatedNetworkAddresses[0]
-			id := mapInterfaceToNetbox(np.ID, slot)
+			name, port, nic := p.mapInterfaceToNetbox(np.ID, slot)
 			mac, err = parseMac(mac, ':')
 			if err != nil {
-				//n.log.Errorf("no mac address for port id: %s, name: %s. ignoring it", id, np.Name)
+				p.log.Errorf("no mac address for port id: %s, name: %s. ignoring it", name, np.Name)
 				continue
 			}
-			p.addBootInterface(id, np)
-			//add baremetal ports (only link up and no integrated ports)
-			if np.LinkStatus == redfish.UpPortLinkStatus && strings.Contains(id, "PCI") {
-				p.node.InspectionData.Inventory.Interfaces = append(p.node.InspectionData.Inventory.Interfaces, node.Interface{
-					Name:       strings.ToLower(id),
-					MacAddress: strings.ToLower(mac),
-					Vendor:     &a.Manufacturer,
-					Product:    a.Model,
-					HasCarrier: true,
-				})
-			}
-
-			intfs[id] = node.NodeInterface{
-				Mac:            mac,
+			p.addBootInterface(name, np)
+			p.Data.Inventory.Interfaces = append(p.Data.Inventory.Interfaces, Interface{
+				Name:           strings.ToLower(name),
+				MacAddress:     strings.ToLower(mac),
+				Vendor:         &a.Manufacturer,
+				Product:        a.Model,
+				HasCarrier:     true,
+				Nic:            nic,
+				Port:           port,
 				PortLinkStatus: np.LinkStatus,
-			}
+			})
 		}
 	}
-	p.node.Interfaces = intfs
-	p.node.InspectionData.Inventory.Boot.CurrentBootMode = "uefi"
+	p.Data.Inventory.Boot.CurrentBootMode = "uefi"
 	return
 }
 
-func (p *Default) bootFromImage(path string) (err error) {
-	//n.log.Debugf("booting image for cable check: %s", *n.cfg.Redfish.BootImage)
+func (p *Default) getMemory() (err error) {
+	s, err := p.client.Client.Service.Systems()
+	if err != nil {
+		return
+	}
+	mem, err := s[0].Memory()
+	if err != nil {
+		return
+	}
+	p.Data.Inventory.Memory.PhysicalMb = calcTotalMemory(mem)
+	return
+}
+
+func (p *Default) BootFromImage(path string) (err error) {
+	defer p.client.Logout()
+	if err = p.client.Connect(); err != nil {
+		return
+	}
+	p.log.Debugf("booting image for cable check: %s", *p.cfg.Redfish.BootImage)
 	bootOverride := redfish.Boot{
 		BootSourceOverrideTarget:  redfish.CdBootSourceOverrideTarget,
 		BootSourceOverrideEnabled: redfish.OnceBootSourceOverrideEnabled,
 	}
-	if err = p.insertMedia(path); err != nil {
+	if err = p.InsertMedia(path); err != nil {
 		return
 	}
 	return p.rebootFromVirtualMedia(bootOverride)
 }
 
 func (p *Default) rebootFromVirtualMedia(boot redfish.Boot) (err error) {
-	//n.log.Debug("boot from virtual media")
+	p.log.Debug("boot from virtual media")
 	type shareParameters struct {
 		Target string
 	}
@@ -269,11 +413,15 @@ func (p *Default) rebootFromVirtualMedia(boot redfish.Boot) (err error) {
 		return
 	}
 
-	return p.power(false, true)
+	return p.Power(false, true)
 }
 
-func (p *Default) insertMedia(image string) (err error) {
-	//n.log.Debug("insert virtual media")
+func (p *Default) InsertMedia(image string) (err error) {
+	defer p.client.Logout()
+	if err = p.client.Connect(); err != nil {
+		return
+	}
+	p.log.Debug("insert virtual media")
 	vm, err := p.getDVDMediaType()
 	if err != nil {
 		return
@@ -297,8 +445,12 @@ func (p *Default) insertMedia(image string) (err error) {
 	return
 }
 
-func (p *Default) ejectMedia() (err error) {
-	//n.log.Debug("eject media image")
+func (p *Default) EjectMedia() (err error) {
+	defer p.client.Logout()
+	if err = p.client.Connect(); err != nil {
+		return
+	}
+	p.log.Debug("eject media image")
 	vm, err := p.getDVDMediaType()
 	if err != nil {
 		return
@@ -332,15 +484,41 @@ vmLoop:
 	return
 }
 
-func (p *Default) addBootInterface(id string, np *redfish.NetworkPort) {
+func (p *Default) addBootInterface(name string, np *redfish.NetworkPort) {
 	mac := np.AssociatedNetworkAddresses[0]
-	if np.LinkStatus == redfish.UpPortLinkStatus && p.node.InspectionData.BootInterface == "" {
+	if strings.HasPrefix(name, "L") {
+		return
+	}
+	if np.LinkStatus == redfish.UpPortLinkStatus && p.Data.BootInterface == "" {
 		mac, err := parseMac(mac, '-')
 		if err != nil {
-			//n.log.Errorf("no mac address for port id: %s, name: %s", id, np.Name)
+			p.log.Errorf("no mac address for port id: %s, name: %s", name, np.Name)
 		} else {
-			p.node.InspectionData.Inventory.Boot.PxeInterface = mac
-			p.node.InspectionData.BootInterface = "01-" + strings.ToLower(mac)
+			p.Data.Inventory.Boot.PxeInterface = mac
+			p.Data.BootInterface = "01-" + strings.ToLower(mac)
 		}
 	}
+}
+
+func (p *Default) mapInterfaceToNetbox(id string, slot int) (name string, port, nic int) {
+	//netbox example: NIC1-port1 (vmnic4)
+	n := strings.Split(id, ".")
+	if len(n) <= 1 {
+		port, _ = strconv.Atoi(id)
+		return fmt.Sprintf("NIC%d-port%s", slot, id), port, slot
+	}
+	//NIC.Integrated.1-1-1 => L1
+	if n[1] == "Integrated" {
+		nr := strings.Split(n[2], "-")
+		port, _ = strconv.Atoi(nr[1])
+		return "L" + nr[1], port, 0
+	}
+	//NIC.Slot.3-2-1 => PCI3-P2
+	if n[1] == "Slot" {
+		nr := strings.Split(n[2], "-")
+		nic, _ = strconv.Atoi(nr[0])
+		port, _ = strconv.Atoi(nr[1])
+		return fmt.Sprintf("NIC%s-port%s", nr[0], nr[1]), port, nic
+	}
+	return
 }

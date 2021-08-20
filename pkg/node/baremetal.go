@@ -35,6 +35,8 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/sapcc/baremetal_temper/pkg/clients"
+	_redfish "github.com/sapcc/baremetal_temper/pkg/redfish"
+	"github.com/stmcginnis/gofish/redfish"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -59,8 +61,21 @@ type ErrorMessage struct {
 
 //Create creates a new ironic node based on the provided ironic model
 func (n *Node) create() (err error) {
+	data, err := n.Redfish.GetData()
+	if err != nil {
+		return
+	}
+	cpData := *data
+	rfIntf := make([]_redfish.Interface, 0)
+	// remove the L1...LN interfaces for ironic
+	for _, intf := range cpData.Inventory.Interfaces {
+		if !strings.HasPrefix(intf.Name, "l") && intf.PortLinkStatus == redfish.UpPortLinkStatus {
+			rfIntf = append(rfIntf, intf)
+		}
+	}
+	cpData.Inventory.Interfaces = rfIntf
 	n.log.Debug("calling inspector api for node creation")
-	if len(n.InspectionData.Inventory.Interfaces) == 0 {
+	if len(cpData.Inventory.Interfaces) == 0 {
 		panic("no interfaces with linkStatus up found. cannot create ironic node")
 	}
 	client := &http.Client{Timeout: 120 * time.Second}
@@ -69,7 +84,7 @@ func (n *Node) create() (err error) {
 		panic("could not create ironic node: " + err.Error())
 	}
 	u.Path = path.Join(u.Path, "/v1/continue")
-	db, err := json.Marshal(n.InspectionData)
+	db, err := json.Marshal(cpData)
 	if err != nil {
 		panic("could not create ironic node: " + err.Error())
 	}
@@ -268,6 +283,10 @@ func (n *Node) provide() (err error) {
 	if err != nil {
 		return
 	}
+	data, err := n.Redfish.GetData()
+	if err != nil {
+		return
+	}
 	psWait := func(state string) wait.ConditionFunc {
 		return wait.ConditionFunc(func() (bool, error) {
 			n, err := nodes.Get(c, n.UUID).Extract()
@@ -315,17 +334,17 @@ func (n *Node) provide() (err error) {
 	update = append(update, nodes.UpdateOperation{
 		Op:    nodes.ReplaceOp,
 		Path:  "/properties/memory_mb",
-		Value: n.InspectionData.Inventory.Memory.PhysicalMb,
+		Value: data.Inventory.Memory.PhysicalMb,
 	})
 	update = append(update, nodes.UpdateOperation{
 		Op:    nodes.ReplaceOp,
 		Path:  "/properties/local_gb",
-		Value: n.InspectionData.RootDisk.Size,
+		Value: data.RootDisk.Size,
 	})
 	update = append(update, nodes.UpdateOperation{
 		Op:    nodes.ReplaceOp,
 		Path:  "/properties/cpus",
-		Value: n.InspectionData.Inventory.CPU.Count,
+		Value: data.Inventory.CPU.Count,
 	})
 
 	return n.updateNode(update)
@@ -388,7 +407,6 @@ func (n *Node) waitForNovaPropagation() (err error) {
 		}
 		hys, err := hypervisors.ExtractHypervisors(p)
 		if err != nil {
-			fmt.Println(err)
 			return false, err
 		}
 		for _, hv := range hys {
@@ -517,11 +535,15 @@ func (n *Node) createPortGroup(name string) (id string, err error) {
 	if n.PortGroupUUID != "" {
 		return n.PortGroupUUID, err
 	}
+	data, err := n.Redfish.GetData()
+	if err != nil {
+		return
+	}
 	pg := clients.PortGroup{
 		NodeUUID:                 n.UUID,
 		StandalonePortsSupported: true,
 		Name:                     name,
-		Address:                  n.InspectionData.Inventory.Interfaces[0].MacAddress, // use the MAC of the first interface
+		Address:                  data.Inventory.Interfaces[0].MacAddress, // use the MAC of the first interface
 		Mode:                     "802.3ad",
 		Properties:               map[string]interface{}{"miimon": 100},
 	}

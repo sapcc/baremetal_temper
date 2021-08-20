@@ -32,8 +32,12 @@ import (
 func (n *Node) runHardwareChecks() (err error) {
 	var dellRe = regexp.MustCompile(`R640|R740|R840`)
 
-	if dellRe.MatchString(n.InspectionData.Inventory.SystemVendor.Model) {
-		c := diagnostics.NewDellClient(*n.Clients.Redfish.ClientConfig, n.log)
+	d, err := n.Redfish.GetData()
+	if err != nil {
+		return
+	}
+	if dellRe.MatchString(d.Inventory.SystemVendor.Model) {
+		c := diagnostics.NewDellClient(*n.Redfish.GetClientConfig(), n.log)
 		return c.Run()
 	}
 
@@ -44,30 +48,33 @@ func (n *Node) runACICheck() (err error) {
 	n.log.Debug("calling aci api for node cable check")
 	aci := diagnostics.NewACI(n.cfg, n.log)
 	noLldp := make([]string, 0)
-
+	d, err := n.Netbox.GetData()
+	if err != nil {
+		return
+	}
 	defer func() {
 		if len(noLldp) > 0 {
 			err = fmt.Errorf("cable check not successful for: %s", noLldp)
 		}
 	}()
 
-	for iName, i := range n.Interfaces {
-		if !strings.Contains(i.Connection, "aci") {
+	for _, intf := range d.Interfaces {
+		if !strings.Contains(intf.Connection, "aci") {
 			continue
 		}
-		if i.PortLinkStatus == redfish.DownPortLinkStatus {
-			noLldp = append(noLldp, iName+"(interface_down)")
+		if intf.PortLinkStatus == redfish.DownPortLinkStatus {
+			noLldp = append(noLldp, intf.Name+"(interface_down)")
 			continue
 		}
 		var co *container.Container
-		if i.ConnectionIP == "" {
-			noLldp = append(noLldp, iName+"(no_aci_ip)")
+		if intf.ConnectionIP == "" {
+			noLldp = append(noLldp, intf.Name+"(no_aci_ip)")
 			continue
 		}
-		n.log.Debugf("checking interface: %s --> %s", iName, i.Connection)
-		co, err = aci.GetContainer(i.ConnectionIP)
+		n.log.Debugf("checking interface: %s --> %s", intf.Name, intf.Connection)
+		co, err = aci.GetContainer(intf.ConnectionIP)
 		if err != nil {
-			noLldp = append(noLldp, iName+"("+err.Error()+")")
+			noLldp = append(noLldp, intf.Name+"("+err.Error()+")")
 			continue
 		}
 
@@ -88,22 +95,22 @@ func (n *Node) runACICheck() (err error) {
 						n.log.Debugf("intra aci: aci-%s", interCon[2])
 					}
 				}
-				n.log.Debugf("aci lldp: %s / node %s", prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV), prepareMac(i.Mac))
-				if prepareMac(i.Mac) == prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV) {
-					if l.LldpIf.LldpIfAttributes.ID != i.Port {
-						errMsg := fmt.Sprintf("%s(wrong switch port: %s)", iName, l.LldpIf.LldpIfAttributes.ID)
-						n.log.Debugf("%s(wrong switch port: %s)", iName, l.LldpIf.LldpIfAttributes.ID)
+				n.log.Debugf("aci lldp: %s / node %s", prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV), prepareMac(intf.Mac))
+				if prepareMac(intf.Mac) == prepareMac(ch.LldpAdjEp.LldpAdjEpAttributes.PortIdV) {
+					if l.LldpIf.LldpIfAttributes.ID != intf.Port {
+						errMsg := fmt.Sprintf("%s(wrong switch port: %s)", intf.Name, l.LldpIf.LldpIfAttributes.ID)
+						n.log.Debugf("%s(wrong switch port: %s)", intf.Name, l.LldpIf.LldpIfAttributes.ID)
 						noLldp = append(noLldp, errMsg)
 						break aciPortLoop
 					}
-					n.log.Debugf("found aci lldp neighbor: %s", i.Mac)
+					n.log.Debugf("found aci lldp neighbor: %s", intf.Mac)
 					foundNeighbor = true
 					break aciPortLoop
 				}
 			}
 		}
 		if !foundNeighbor {
-			noLldp = append(noLldp, iName+"(lldp_missing)")
+			noLldp = append(noLldp, intf.Name+"(lldp_missing)")
 		}
 	}
 
@@ -113,17 +120,21 @@ func (n *Node) runACICheck() (err error) {
 func (n *Node) runAristaCheck() (err error) {
 	noLldp := make([]string, 0)
 	cfg := n.cfg.Arista
+	netboxData, err := n.Netbox.GetData()
+	if err != nil {
+		return
+	}
 	defer func() {
 		if len(noLldp) > 0 {
 			err = fmt.Errorf("cable check not successful for: %s", noLldp)
 		}
 	}()
-	for iName, i := range n.Interfaces {
-		if !strings.Contains(i.Connection, "sw") {
+	for _, intf := range netboxData.Interfaces {
+		if intf.Connection == "" || !strings.Contains(intf.Connection, "sw") {
 			continue
 		}
 		n.log.Debug("calling arista api for node cable check")
-		host := fmt.Sprintf("%s.%s", i.Connection, n.cfg.Domain)
+		host := fmt.Sprintf("%s.%s", intf.Connection, n.cfg.Domain)
 		c, err := goeapi.Connect(cfg.Transport, host, cfg.User, cfg.Password, cfg.Port)
 		if err != nil {
 			return err
@@ -134,14 +145,14 @@ func (n *Node) runAristaCheck() (err error) {
 		for _, ln := range lldp.LLDPNeighbors {
 			//244a.979a.b76b
 			//24:4a:97:9a:b7:6b
-			if strings.ToLower(strings.ReplaceAll(i.Mac, ":", "")) == strings.ReplaceAll(ln.NeighborPort, ".", "") {
-				n.log.Debugf("found aci lldp neighbor: %s", i.Mac)
+			if strings.ToLower(strings.ReplaceAll(intf.Mac, ":", "")) == strings.ReplaceAll(ln.NeighborPort, ".", "") {
+				n.log.Debugf("found aci lldp neighbor: %s", intf.Mac)
 				foundNeighbor = true
 				break
 			}
 		}
 		if !foundNeighbor {
-			noLldp = append(noLldp, iName+"(lldp_missing)")
+			noLldp = append(noLldp, intf.Name+"(lldp_missing)")
 		}
 	}
 

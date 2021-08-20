@@ -16,15 +16,57 @@
 
 package redfish
 
-import "github.com/stmcginnis/gofish/redfish"
+import (
+	"github.com/sapcc/baremetal_temper/pkg/clients"
+	"github.com/sapcc/baremetal_temper/pkg/config"
+	log "github.com/sirupsen/logrus"
+	"github.com/stmcginnis/gofish/redfish"
+)
 
 type Dell struct {
 	Default
 }
 
-func (d Dell) getVendorData() {
-	//node.log.Debug("calling redfish api to load node info")
+func NewDell(remoteIP string, cfg config.Config, ctxLogger *log.Entry) (Redfish, error) {
+	c := clients.NewRedfish(cfg, ctxLogger)
+	c.SetEndpoint(remoteIP)
+	r := &Dell{Default: Default{client: c, cfg: cfg, log: ctxLogger}}
+	return r, r.check()
+}
+
+func (d *Dell) GetData() (*Data, error) {
 	defer d.client.Logout()
+	if err := d.client.Connect(); err != nil {
+		return d.Data, err
+	}
+	if d.Data != nil {
+		return d.Data, nil
+	}
+	if err := d.client.Connect(); err != nil {
+		return d.Data, err
+	}
+	defer d.client.Logout()
+	d.Data = &Data{}
+	if err := d.getVendorData(); err != nil {
+		return d.Data, err
+	}
+	if err := d.getDisks(); err != nil {
+		return d.Data, err
+	}
+	if err := d.getCPUs(); err != nil {
+		return d.Data, err
+	}
+	if err := d.getMemory(); err != nil {
+		return d.Data, err
+	}
+	if err := d.getNetworkDevices(); err != nil {
+		return d.Data, err
+	}
+	return d.Data, nil
+}
+
+func (d *Dell) getVendorData() (err error) {
+	d.log.Debug("calling redfish api to load node info")
 	ch, err := d.client.Client.Service.Chassis()
 	if err != nil || len(ch) == 0 {
 		return
@@ -35,15 +77,16 @@ func (d Dell) getVendorData() {
 		return
 	}
 
-	d.node.InspectionData.Inventory.SystemVendor.Manufacturer = ch[0].Manufacturer
-	d.node.InspectionData.Inventory.SystemVendor.SerialNumber = ch[0].SKU
-	d.node.InspectionData.Inventory.SystemVendor.Model = s[0].Model
+	d.Data.Inventory.SystemVendor.Manufacturer = ch[0].Manufacturer
+	d.Data.Inventory.SystemVendor.SerialNumber = ch[0].SKU
+	d.Data.Inventory.SystemVendor.Model = s[0].Model
 
-	d.node.InspectionData.Inventory.SystemVendor.ProductName = ch[0].Model
+	d.Data.Inventory.SystemVendor.ProductName = ch[0].Model
+	return
 }
 
 func (d *Dell) rebootFromVirtualMedia(boot redfish.Boot) (err error) {
-	//n.log.Debug("boot from virtual media")
+	d.log.Debug("boot from virtual media")
 	type shareParameters struct {
 		Target string
 	}
@@ -67,5 +110,5 @@ func (d *Dell) rebootFromVirtualMedia(boot redfish.Boot) (err error) {
 		return
 	}
 
-	return d.power(false, true)
+	return d.Power(false, true)
 }

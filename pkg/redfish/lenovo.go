@@ -16,12 +16,26 @@
 
 package redfish
 
+import (
+	"github.com/sapcc/baremetal_temper/pkg/clients"
+	"github.com/sapcc/baremetal_temper/pkg/config"
+	log "github.com/sirupsen/logrus"
+)
+
 type Lenovo struct {
+	client *clients.Redfish
 	Default
 }
 
-func (p *Lenovo) insertMedia(image string) (err error) {
-	//n.log.Debug("insert virtual media")
+func NewLenovo(remoteIP string, cfg config.Config, ctxLogger *log.Entry) (Redfish, error) {
+	c := clients.NewRedfish(cfg, ctxLogger)
+	c.SetEndpoint(remoteIP)
+	r := &Lenovo{Default: Default{client: c, cfg: cfg, log: ctxLogger}}
+	return r, r.check()
+}
+
+func (p *Lenovo) InsertMedia(image string) (err error) {
+	p.log.Debug("insert virtual media")
 	vm, err := p.getDVDMediaType()
 	if err != nil {
 		return
@@ -45,8 +59,8 @@ func (p *Lenovo) insertMedia(image string) (err error) {
 	return
 }
 
-func (p *Lenovo) ejectMedia() (err error) {
-	//n.log.Debug("eject media image")
+func (p *Lenovo) EjectMedia() (err error) {
+	p.log.Debug("eject media image")
 	vm, err := p.getDVDMediaType()
 	if err != nil {
 		return

@@ -20,6 +20,8 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+
+	"github.com/stmcginnis/gofish/redfish"
 )
 
 func parseMac(s string, sep rune) (string, error) {
@@ -40,20 +42,10 @@ func parseMac(s string, sep rune) (string, error) {
 	return buf.String(), nil
 }
 
-func mapInterfaceToNetbox(id string, slot int) (intf string) {
-	p := strings.Split(id, ".")
-	if len(p) <= 1 {
-		return fmt.Sprintf("PCI%d-P%s", slot, id)
-	}
-	//NIC.Integrated.1-1-1 => L1
-	if p[1] == "Integrated" {
-		nr := strings.Split(p[2], "-")
-		intf = "L" + nr[1]
-	}
-	//NIC.Slot.3-2-1 => PCI3-P2
-	if p[1] == "Slot" {
-		nr := strings.Split(p[2], "-")
-		intf = fmt.Sprintf("PCI%s-P%s", nr[0], nr[1])
+func calcTotalMemory(mem []*redfish.Memory) (totalMem int) {
+	totalMem = 0
+	for _, m := range mem {
+		totalMem = totalMem + m.CapacityMiB
 	}
 	return
 }

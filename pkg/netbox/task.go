@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-package task
+package netbox
 
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/netbox-community/go-netbox/netbox/models"
 )
 
 type ConfigContext struct {
@@ -45,8 +47,12 @@ type Exec struct {
 	Name string
 }
 
-func GetTemperConfigContext(data interface{}) (temperCtx ConfigContext, err error) {
-	ctx, ok := data.(map[string]interface{})
+func (n *Netbox) GetTemperConfigContext() (temperCtx ConfigContext, err error) {
+	d, err := n.GetData()
+	if err != nil {
+		return
+	}
+	ctx, ok := d.Device.ConfigContext.(map[string]interface{})
 	if !ok {
 		return temperCtx, fmt.Errorf("cannot cast interface to netbox ConfigContext")
 	}
@@ -63,5 +69,31 @@ func GetTemperConfigContext(data interface{}) (temperCtx ConfigContext, err erro
 	}
 
 	temperCtx.Baremetal.Temper = taskCtx
+	return
+}
+
+func (n *Netbox) WriteLocalContextData(t []*Task) (err error) {
+	d, err := n.GetData()
+	if err != nil {
+		return
+	}
+	ctx, ok := d.Device.ConfigContext.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("cannot cast interface to netbox ConfigContext")
+	}
+	ctx["baremetal"] = TemperContext{
+		Temper: TaskContext{
+			Tasks: t,
+		},
+	}
+	if err != nil {
+		return err
+	}
+
+	_, err = n.updateNodeInfo(
+		models.WritableDeviceWithConfigContext{
+			LocalContextData: ctx,
+		},
+	)
 	return
 }
