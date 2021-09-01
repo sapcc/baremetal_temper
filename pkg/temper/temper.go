@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sapcc/baremetal_temper/pkg/node"
@@ -50,7 +51,12 @@ func (t *Temper) cleanup() {
 	t.Lock()
 	defer t.Unlock()
 	for i, n := range t.nodes {
-		if n.Status != "progress" {
+		if n.Status == "failed" {
+			if n.Updated.After(time.Now().Add(30 * time.Minute)) {
+				t.disp.Dispatch(n)
+			}
+		}
+		if n.Status == "success" {
 			delete(t.nodes, i)
 		}
 	}

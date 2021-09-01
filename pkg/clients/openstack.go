@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/config"
 
@@ -117,13 +118,16 @@ func (oc *Openstack) GetServiceClient(client string) (c *gophercloud.ServiceClie
 			if err != nil {
 				return nil, err
 			}
-			c.Microversion = version.Version
+			if version.Version == "" {
+				c.Microversion = "1.38"
+			} else {
+				c.Microversion = version.Version
+			}
 			oc.Clients["baremetal"] = c
 			return c, err
-		} else {
-			oc.log.Infof("baremetal service error: %s", err.Error())
-			return c, err
 		}
+		oc.log.Infof("baremetal service error: %s", err.Error())
+		return c, err
 	}
 	return
 }
@@ -227,16 +231,25 @@ func (c *Openstack) GetImageID(name string) (id string, err error) {
 	if err != nil {
 		return
 	}
-	err = images.ListDetail(cl, images.ListOpts{Name: name}).EachPage(
+	err = images.ListDetail(cl, images.ListOpts{Name: name, Status: "active"}).EachPage(
 		func(p pagination.Page) (bool, error) {
 			is, err := images.ExtractImages(p)
 			if err != nil {
 				return false, err
 			}
+			var latest time.Time
 			for _, i := range is {
+				//2021-06-28T14:04:58
 				if i.Name == name {
-					id = i.ID
-					return false, nil
+					ts, err := time.Parse(time.RFC3339, i.Created)
+					if err != nil {
+						continue
+					}
+					if ts.After(latest) {
+						id = i.ID
+						latest = ts
+					}
+					continue
 				}
 			}
 			return true, nil
@@ -309,13 +322,17 @@ func (c *Openstack) GetNetwork(name string) (n servers.Network, err error) {
 }
 
 func (c *Openstack) CreatePortGroup(pg PortGroup) (uuid string, err error) {
-	u := c.Clients["baremetal"].ServiceURL("v1/portgroups")
+	cl, err := c.GetServiceClient("baremetal")
+	if err != nil {
+		return
+	}
+	u := cl.ServiceURL("v1/portgroups")
 	reqBody, err := pg.ToPortCreateMap()
 	r := PortGroup{}
 	if err != nil {
 		return
 	}
-	resp, err := c.Clients["baremetal"].Post(u, reqBody, &r, nil)
+	resp, err := cl.Post(u, reqBody, &r, nil)
 	if err != nil {
 		return
 	}

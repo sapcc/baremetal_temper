@@ -65,17 +65,16 @@ func (n *Node) create() (err error) {
 	if err != nil {
 		return
 	}
-	cpData := *data
 	rfIntf := make([]_redfish.Interface, 0)
 	// remove the L1...LN interfaces for ironic
-	for _, intf := range cpData.Inventory.Interfaces {
+	for _, intf := range data.Inventory.Interfaces {
 		if !strings.HasPrefix(intf.Name, "l") && intf.PortLinkStatus == redfish.UpPortLinkStatus {
 			rfIntf = append(rfIntf, intf)
 		}
 	}
-	cpData.Inventory.Interfaces = rfIntf
+	data.Inventory.Interfaces = rfIntf
 	n.log.Debug("calling inspector api for node creation")
-	if len(cpData.Inventory.Interfaces) == 0 {
+	if len(data.Inventory.Interfaces) == 0 {
 		panic("no interfaces with linkStatus up found. cannot create ironic node")
 	}
 	client := &http.Client{Timeout: 120 * time.Second}
@@ -84,7 +83,7 @@ func (n *Node) create() (err error) {
 		panic("could not create ironic node: " + err.Error())
 	}
 	u.Path = path.Join(u.Path, "/v1/continue")
-	db, err := json.Marshal(cpData)
+	db, err := json.Marshal(data)
 	if err != nil {
 		panic("could not create ironic node: " + err.Error())
 	}
@@ -336,11 +335,13 @@ func (n *Node) provide() (err error) {
 		Path:  "/properties/memory_mb",
 		Value: data.Inventory.Memory.PhysicalMb,
 	})
-	update = append(update, nodes.UpdateOperation{
-		Op:    nodes.ReplaceOp,
-		Path:  "/properties/local_gb",
-		Value: data.RootDisk.Size,
-	})
+	/*
+		update = append(update, nodes.UpdateOperation{
+			Op:    nodes.ReplaceOp,
+			Path:  "/properties/local_gb",
+			Value: data.RootDisk.Size,
+		})
+	*/
 	update = append(update, nodes.UpdateOperation{
 		Op:    nodes.ReplaceOp,
 		Path:  "/properties/cpus",
@@ -605,9 +606,10 @@ func (n *Node) updateNode(opts nodes.UpdateOpts) (err error) {
 		r := nodes.Update(c, n.UUID, opts)
 		_, err = r.Extract()
 		if err != nil {
+			n.log.Debugf("error updating ironic node: %s", err.Error())
 			return false, nil
 		}
 		return true, nil
 	})
-	return wait.Poll(5*time.Second, 60*time.Second, cf)
+	return wait.Poll(5*time.Second, 180*time.Second, cf)
 }

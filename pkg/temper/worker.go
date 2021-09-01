@@ -18,6 +18,7 @@ package temper
 
 import (
 	"sync"
+	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/node"
 	log "github.com/sirupsen/logrus"
@@ -58,6 +59,7 @@ func (w *Worker) Start() {
 				wg.Add(1)
 				job.Temper(true, &wg)
 				wg.Wait()
+				job.Updated = time.Now()
 				if err = job.Netbox.WriteLocalContextData(job.Tasks); err != nil {
 					log.Error(err)
 				}

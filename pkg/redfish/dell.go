@@ -35,10 +35,6 @@ func NewDell(remoteIP string, cfg config.Config, ctxLogger *log.Entry) (Redfish,
 }
 
 func (d *Dell) GetData() (*Data, error) {
-	defer d.client.Logout()
-	if err := d.client.Connect(); err != nil {
-		return d.Data, err
-	}
 	if d.Data != nil {
 		return d.Data, nil
 	}
