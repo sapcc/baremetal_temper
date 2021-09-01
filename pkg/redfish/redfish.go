@@ -76,6 +76,7 @@ type SystemVendor struct {
 }
 
 type Disk struct {
+	ID                 string  `json:"-"`
 	Rotational         bool    `json:"rotational"`
 	Vendor             string  `json:"vendor"`
 	Name               string  `json:"name"`
@@ -142,10 +143,10 @@ func NewDefault(remoteIP string, cfg config.Config, ctxLogger *log.Entry) (Redfi
 }
 
 func (p Default) check() (err error) {
-	defer p.client.Logout()
 	if err = p.client.Connect(); err != nil {
-		return
+		return err
 	}
+	defer p.client.Logout()
 	ch, err := p.client.Client.Service.Chassis()
 	if err != nil || len(ch) == 0 {
 		return fmt.Errorf("redfish chassis != 1")
@@ -251,6 +252,7 @@ func (p *Default) getVendorData() (err error) {
 	p.Data.Inventory.SystemVendor.ProductName = ch[0].Model
 	return
 }
+
 func (p *Default) getDisks() (err error) {
 	s, err := p.client.Client.Service.Systems()
 	if err != nil {
@@ -280,7 +282,6 @@ func (p *Default) getDisks() (err error) {
 				Size:       int64(float64(s.CapacityBytes) * 1.074),
 				Rotational: rotational,
 			}
-
 			//"SSD 1" or "HDD 2"
 			match := re.FindStringSubmatch(s.Name)
 			if match != nil {
@@ -292,14 +293,13 @@ func (p *Default) getDisks() (err error) {
 					rootDisk.Rotational = rotational
 				}
 			}
-
 			p.Data.Inventory.Disks = append(p.Data.Inventory.Disks, disk)
 		}
 	}
-
 	p.Data.RootDisk = rootDisk
 	return
 }
+
 func (p *Default) getCPUs() (err error) {
 	s, err := p.client.Client.Service.Systems()
 	if err != nil {
@@ -521,4 +521,9 @@ func (p *Default) mapInterfaceToNetbox(id string, slot int) (name string, port, 
 		return fmt.Sprintf("NIC%s-port%s", nr[0], nr[1]), port, nic
 	}
 	return
+}
+
+func handleError(err error) {
+	if strings.Contains(err.Error(), "ResourceNotReadyRetry") {
+	}
 }

@@ -141,7 +141,7 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 		return
 	}
 	mem := 0.1
-	disk := 0.2
+	//disk := 0.2
 	cpu := 0.1
 	var fl flavors.Flavor
 	err = flavors.ListDetail(c, flavors.ListOpts{AccessType: flavors.PublicAccess}).EachPage(func(p pagination.Page) (bool, error) {
@@ -150,16 +150,17 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 			return false, err
 		}
 		for _, f := range fs {
-			//if !strings.HasPrefix(f.Name, "hv_") {
-			//	continue
-			//}
-
+			/*
+				if !strings.HasPrefix(f.Name, "hv_") {
+					continue
+				}
+			*/
 			deltaMem := calcDelta(f.RAM, data.Inventory.Memory.PhysicalMb)
-			deltaDisk := calcDelta(f.Disk, int(data.RootDisk.Size/1024/1024/1024))
+			//deltaDisk := calcDelta(f.Disk, int(data.RootDisk.Size/1024/1024/1024))
 			deltaCPU := calcDelta(f.VCPUs, data.Inventory.CPU.Count)
-			if deltaMem <= mem && deltaDisk <= disk && deltaCPU <= cpu {
+			if deltaMem <= mem && deltaCPU <= cpu {
 				mem = deltaMem
-				disk = deltaDisk
+				//disk = deltaDisk
 				cpu = deltaCPU
 				name = f.Name
 				fl = f
@@ -171,7 +172,7 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 		return name, fmt.Errorf("no matching flavor found for node")
 	}
 	data.Inventory.Memory.PhysicalMb = fl.RAM
-	data.RootDisk.Size = int64(fl.Disk)
+	//data.RootDisk.Size = int64(fl.Disk)
 	data.Inventory.CPU.Count = fl.VCPUs
 	return
 }

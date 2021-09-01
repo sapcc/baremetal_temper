@@ -47,7 +47,7 @@ var runCmd = &cobra.Command{
 			for _, t := range tasks {
 				s := strings.Split(t, ".")
 				if len(s) != 2 {
-					log.Error("wrong task format. It should be [service].[tasks]")
+					log.Error("wrong task format. It should be [service].[task]")
 					continue
 				}
 				if err = n.AddTask(s[0], s[1]); err != nil {

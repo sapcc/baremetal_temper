@@ -241,11 +241,14 @@ func (n *Netbox) loadInterfaces() (err error) {
 			device map[string]interface{}
 			conn   map[string]interface{}
 		)
-		if !strings.Contains(*in.Name, "NIC") && !strings.Contains(*in.Name, "L") || strings.Contains(*in.Name, "LAG") {
+		if !strings.Contains(*in.Name, "PCI") &&
+			!strings.Contains(*in.Name, "NIC") &&
+			!strings.Contains(*in.Name, "L") ||
+			strings.Contains(*in.Name, "LAG") {
 			continue
 		}
 
-		if in.ConnectionStatus != nil && *in.ConnectionStatus.Value {
+		if in.ConnectionStatus != nil {
 			conn = in.ConnectedEndpoint.(map[string]interface{})
 			device = conn["device"].(map[string]interface{})
 			ip, err = n.getInterfaceIP(fmt.Sprintf("%v", device["id"]))
@@ -258,6 +261,9 @@ func (n *Netbox) loadInterfaces() (err error) {
 		nicPort := re.FindAllString(*in.Name, -1)
 		nic := 0
 		port := 0
+		if len(nicPort) == 0 {
+			continue
+		}
 		if len(nicPort) == 2 {
 			nic, _ = strconv.Atoi(nicPort[0])
 			port, _ = strconv.Atoi(nicPort[1])

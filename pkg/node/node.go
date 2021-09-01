@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/netbox-community/go-netbox/netbox/models"
 	"github.com/sapcc/baremetal_temper/pkg/clients"
@@ -30,6 +31,7 @@ type Node struct {
 	IpamAddresses  []models.IPAddress `json:"-"`
 
 	tasksExecs map[string]map[string][]*netbox.Exec `json:"-"`
+	Updated    time.Time                            `json:"-"`
 
 	Redfish _redfish.Redfish `json:"-"`
 	Netbox  *netbox.Netbox   `json:"-"`
@@ -64,13 +66,14 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 }
 
 func (n *Node) Setup() (err error) {
-	if err := n.createRedfishClient(); err != nil {
-		n.log.Errorf("cannot create redfish client: %s", err.Error())
+	if err = n.createRedfishClient(); err != nil {
+		err = fmt.Errorf("cannot create redfish client: %s", err.Error())
 		n.Status = "failed"
+		return
 	}
 	if err = n.Redfish.Power(false, false); err != nil {
 		n.Status = "failed"
-		n.log.Errorf("cannot power on node: %s", err.Error())
+		err = fmt.Errorf("cannot power on node: %s", err.Error())
 		return
 	}
 	return n.mergeInterfaces()
@@ -153,7 +156,7 @@ func (n *Node) cleanupHandler(netboxSts bool) {
 
 func recoverTaskExec(n *Node) {
 	if r := recover(); r != nil {
-		fmt.Println("recovered from ", r)
+		n.log.Error("recovered from ", r)
 		n.Status = "failed"
 	}
 }
@@ -163,13 +166,18 @@ func (n *Node) createRedfishClient() (err error) {
 	if err != nil {
 		return
 	}
+
 	lenovo := regexp.MustCompile(`SR950`)
 	dell := regexp.MustCompile(`R640|R740|R840`)
+	hpe := regexp.MustCompile(`DL560|DL360`)
+
 	switch {
 	case lenovo.MatchString(*d.Device.DeviceType.Model):
 		n.Redfish, err = _redfish.NewLenovo(d.RemoteIP, n.cfg, n.log)
 	case dell.MatchString(*d.Device.DeviceType.Model):
 		n.Redfish, err = _redfish.NewDell(d.RemoteIP, n.cfg, n.log)
+	case hpe.MatchString(*d.Device.DeviceType.Model):
+		n.Redfish, err = _redfish.NewHpe(d.RemoteIP, n.cfg, n.log)
 	default:
 		n.Redfish, err = _redfish.NewDefault(d.RemoteIP, n.cfg, n.log)
 	}
@@ -187,9 +195,10 @@ func (n *Node) mergeInterfaces() (err error) {
 	}
 	rd.Inventory.BmcAddress = nd.DNSName
 	sort.Slice(rd.Inventory.Interfaces, func(i, j int) bool {
-		nic1 := rd.Inventory.Interfaces[i].Nic
+		//make sure nic = 0 port = x is always smaller than a nic = 1, port = x
+		nic1 := rd.Inventory.Interfaces[i].Nic * 10
 		port1 := rd.Inventory.Interfaces[i].Port
-		nic2 := rd.Inventory.Interfaces[j].Nic
+		nic2 := rd.Inventory.Interfaces[j].Nic * 10
 		port2 := rd.Inventory.Interfaces[j].Port
 		return nic1+port1 < nic2+port2
 	})
@@ -206,7 +215,7 @@ func (n *Node) mergeInterfaces() (err error) {
 		rdfInterfaces[nicI][intf.Port] = intf
 		nic = intf.Nic
 	}
-	interfaces := make([]netbox.NodeInterface, len(nd.Interfaces))
+	interfaces := make([]netbox.NodeInterface, 0)
 	for _, intf := range nd.Interfaces {
 		rdIntf, ok := rdfInterfaces[intf.Nic][intf.PortNumber]
 		if ok {
@@ -214,14 +223,13 @@ func (n *Node) mergeInterfaces() (err error) {
 			intf.PortLinkStatus = rdIntf.PortLinkStatus
 			if intf.Nic != 0 {
 				intf.RedfishName = fmt.Sprintf("PCI%d-port%d", rdIntf.Nic, rdIntf.Port)
+			} else {
+				intf.RedfishName = fmt.Sprintf("L%d", rdIntf.Port)
 			}
+			n.log.Debugf("found interface: %s, redfish: %s, mac: %s", intf.Name, intf.RedfishName, intf.Mac)
 			interfaces = append(interfaces, intf)
 		}
 	}
 	nd.Interfaces = interfaces
-	nd, _ = n.Netbox.GetData()
-	for _, intf := range nd.Interfaces {
-		fmt.Println(intf.Name, intf.RedfishName, intf.Mac, intf.ConnectionIP)
-	}
 	return
 }

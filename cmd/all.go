@@ -46,11 +46,6 @@ var complete = &cobra.Command{
 				log.Errorf("error node %s: %s", na, err.Error())
 				continue
 			}
-			wg.Add(1)
-			if err = n.AddTask("node", "setup"); err != nil {
-				log.Error(err)
-				continue
-			}
 			n.AddTask("dns", "create")
 			if diag {
 				n.AddTask("diagnostics", "cablecheck")
@@ -65,6 +60,7 @@ var complete = &cobra.Command{
 			if netboxStatus {
 				n.AddTask("netbox", "sync")
 			}
+			wg.Add(1)
 			go n.Temper(netboxStatus, &wg)
 		}
 		wg.Wait()
