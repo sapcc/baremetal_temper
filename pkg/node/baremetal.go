@@ -160,9 +160,9 @@ func (n *Node) checkCreated() (err error) {
 	return
 }
 
-//Prepare prepares the node for customers.
+//setupConductorGroup prepares the node for customers.
 //Removes resource_class, sets the rightful conductor and maintenance to true
-func (n *Node) prepare() (err error) {
+func (n *Node) addToConductorGroup() (err error) {
 	if err = n.loadBaremetalNodeInfo(); err != nil {
 		return
 	}

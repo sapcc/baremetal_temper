@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,6 +46,10 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 	ctxLogger := log.WithFields(log.Fields{
 		"node": name,
 	})
+	if len(strings.Split(name, "-")) != 2 {
+		return n, fmt.Errorf("wrong node name format. e.g. node001-ap001")
+	}
+
 	n = &Node{
 		Name:       name,
 		Status:     "progress",

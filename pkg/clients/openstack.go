@@ -339,6 +339,5 @@ func (c *Openstack) CreatePortGroup(pg PortGroup) (uuid string, err error) {
 	if resp.StatusCode != http.StatusCreated {
 		return uuid, fmt.Errorf("error creating port group: %s", err.Error())
 	}
-
 	return r.UUID, err
 }

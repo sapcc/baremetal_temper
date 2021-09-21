@@ -18,6 +18,7 @@ package node
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/netbox"
@@ -67,12 +68,26 @@ func (n *Node) initTaskExecs() {
 		"validate": {
 			{Fn: n.validate, Name: "ironic.validate"},
 		},
+		"prepare": {
+			{Fn: n.addToConductorGroup, Name: "ironic.prepare.addToConductorGroup"},
+			{Fn: func() error {
+				host := "nova-compute-ironic-" + strings.Split(n.Name, "-")[1]
+				_, err := n.enableComputeService(host)
+				return err
+			}, Name: "ironic.prepare.enableComputeService"},
+			{Fn: func() error {
+				block := strings.Split(n.Name, "-")[1]
+				az, err := n.Netbox.GetAvailabilityZone(block)
+				if err != nil {
+					return err
+				}
+				host := "nova-compute-ironic-" + block
+				return n.addHostToAggregate(host, az)
+			}, Name: "ironic.prepare.addHostToAggregate"},
+		},
 		"test": {
 			{Fn: n.waitForNovaPropagation, Name: "ironic.test.waitForNovaPropagation"},
 			{Fn: n.deployTestInstance, Name: "ironic.test.deploy"},
-		},
-		"prepare": {
-			{Fn: n.prepare, Name: "ironic.prepare"},
 		},
 	}
 	n.tasksExecs["netbox"] = map[string][]*netbox.Exec{

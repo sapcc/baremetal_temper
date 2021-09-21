@@ -347,3 +347,19 @@ func (n *Netbox) getInterfaceIP(id string) (ip net.IP, err error) {
 	ip, _, err = net.ParseCIDR(*d.PrimaryIp4.Address)
 	return
 }
+
+func (n *Netbox) GetAvailabilityZone(block string) (az string, err error) {
+	q := block + "-01"
+	d, err := n.client.Client.Dcim.DcimRacksList(&dcim.DcimRacksListParams{
+		Q:       &q,
+		Context: context.Background(),
+	}, nil)
+	if err != nil {
+		return
+	}
+	if len(d.Payload.Results) != 1 {
+		return az, fmt.Errorf("error findin az: could not get rack list")
+	}
+	az = *d.Payload.Results[0].Site.Slug
+	return
+}

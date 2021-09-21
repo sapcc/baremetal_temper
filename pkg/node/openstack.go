@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"text/template"
 
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/aggregates"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/services"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
 	"github.com/gophercloud/gophercloud/pagination"
@@ -174,5 +176,72 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 	data.Inventory.Memory.PhysicalMb = fl.RAM
 	//data.RootDisk.Size = int64(fl.Disk)
 	data.Inventory.CPU.Count = fl.VCPUs
+	return
+}
+
+func (n *Node) enableComputeService(host string) (id string, err error) {
+	cl, err := n.oc.GetServiceClient("compute")
+	if err != nil {
+		return
+	}
+	ps := services.List(cl, services.ListOpts{Host: host})
+	p, err := ps.AllPages()
+	if err != nil {
+		return
+	}
+	var svc services.Service
+	svcs, err := services.ExtractServices(p)
+	for _, s := range svcs {
+		if s.Host == host {
+			//binary = s.Binary
+			svc = s
+			break
+		}
+	}
+	fmt.Println(svc.Status, "STATUS")
+	if svc.Status == string(services.ServiceDisabled) {
+		r := services.Update(cl, id, services.UpdateOpts{Status: services.ServiceEnabled})
+		return id, r.Err
+	}
+	return
+}
+
+func (n *Node) addHostToAggregate(host, az string) (err error) {
+	cl, err := n.oc.GetServiceClient("compute")
+	if err != nil {
+		return
+	}
+
+	p := aggregates.List(cl)
+	ps, err := p.AllPages()
+	if err != nil {
+		return
+	}
+	aggs, err := aggregates.ExtractAggregates(ps)
+	if err != nil {
+		return
+	}
+	var aggregate aggregates.Aggregate
+	for _, a := range aggs {
+		if a.AvailabilityZone == az && a.Name == az {
+			aggregate = a
+			break
+		}
+	}
+	if aggregate.Name == "" {
+		return fmt.Errorf("cannot find aggregate for az: %s", az)
+	}
+
+	foundHost := false
+	for _, h := range aggregate.Hosts {
+		if h == host {
+			foundHost = true
+			break
+		}
+	}
+	if !foundHost {
+		r := aggregates.AddHost(cl, aggregate.ID, aggregates.AddHostOpts{Host: host})
+		return r.Err
+	}
 	return
 }
