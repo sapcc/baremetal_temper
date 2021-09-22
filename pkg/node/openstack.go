@@ -184,6 +184,7 @@ func (n *Node) enableComputeService(host string) (id string, err error) {
 	if err != nil {
 		return
 	}
+	cl.Microversion = "2.53"
 	ps := services.List(cl, services.ListOpts{Host: host})
 	p, err := ps.AllPages()
 	if err != nil {
@@ -191,17 +192,22 @@ func (n *Node) enableComputeService(host string) (id string, err error) {
 	}
 	var svc services.Service
 	svcs, err := services.ExtractServices(p)
+	if err != nil {
+		return
+	}
 	for _, s := range svcs {
 		if s.Host == host {
-			//binary = s.Binary
 			svc = s
 			break
 		}
 	}
-	fmt.Println(svc.Status, "STATUS")
+	if svc.Status == "" {
+		n.log.Warnf("compute service %s does not exist yet", host)
+		return
+	}
 	if svc.Status == string(services.ServiceDisabled) {
-		r := services.Update(cl, id, services.UpdateOpts{Status: services.ServiceEnabled})
-		return id, r.Err
+		r := services.Update(cl, svc.ID, services.UpdateOpts{Status: services.ServiceEnabled})
+		return svc.ID, r.Err
 	}
 	return
 }

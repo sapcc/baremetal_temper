@@ -358,7 +358,7 @@ func (n *Netbox) GetAvailabilityZone(block string) (az string, err error) {
 		return
 	}
 	if len(d.Payload.Results) != 1 {
-		return az, fmt.Errorf("error findin az: could not get rack list")
+		return az, fmt.Errorf("error finding az: could not get rack list")
 	}
 	az = *d.Payload.Results[0].Site.Slug
 	return
