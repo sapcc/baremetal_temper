@@ -464,20 +464,20 @@ func (n *Node) deployTestInstance() (err error) {
 		return
 	}
 	n.log.Debug("creating test instance on node")
-	iID, err := n.oc.GetImageID(n.cfg.Deployment.Image)
+	iID, err := n.getImageID(n.cfg.Deployment.Image)
 	if err != nil {
 		return
 	}
-	zID, err := n.oc.GetConductorZone(n.cfg.Deployment.ConductorZone)
+	zID, err := n.getConductorZone(n.cfg.Deployment.ConductorZone)
 	if err != nil {
 		return
 	}
-	fID, err := n.oc.GetFlavorID(n.cfg.Deployment.Flavor)
+	fID, err := n.getFlavorID(n.cfg.Deployment.Flavor)
 	if err != nil {
 		return
 	}
 
-	net, err := n.oc.GetNetwork(n.cfg.Deployment.Network)
+	net, err := n.getNetwork(n.cfg.Deployment.Network)
 	if err != nil {
 		return
 	}
@@ -548,12 +548,25 @@ func (n *Node) createPortGroup(name string) (id string, err error) {
 		Mode:                     "802.3ad",
 		Properties:               map[string]interface{}{"miimon": 100},
 	}
-	id, err = n.oc.CreatePortGroup(pg)
+	cl, err := n.oc.GetServiceClient("baremetal")
 	if err != nil {
 		return
 	}
+	u := cl.ServiceURL("v1/portgroups")
+	reqBody, err := pg.ToPortCreateMap()
+	r := clients.PortGroup{}
+	if err != nil {
+		return
+	}
+	resp, err := cl.Post(u, reqBody, &r, nil)
+	if err != nil {
+		return
+	}
+	if resp.StatusCode != http.StatusCreated {
+		return id, fmt.Errorf("error creating port group: %s", err.Error())
+	}
 	n.PortGroupUUID = id
-	return
+	return r.UUID, err
 }
 
 func (n *Node) updatePorts(opts ports.UpdateOpts) (err error) {

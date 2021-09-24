@@ -23,12 +23,20 @@ import (
 	"net"
 	"strconv"
 	"text/template"
+	"time"
 
+	"github.com/gophercloud/gophercloud"
+	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/aggregates"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/services"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/images"
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
+	"github.com/gophercloud/gophercloud/openstack/dns/v2/recordsets"
 	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
+	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/pagination"
+	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 )
 
@@ -59,7 +67,7 @@ func (n *Node) createDNSRecords() (err error) {
 		}
 		n.log.Debug("Create A recordset:  ", ip.String(), allZones[0].ID, a.DNSName)
 
-		if err = n.oc.CreateDNSRecord(ip.String(), allZones[0].ID, a.DNSName+".", "A"); err != nil {
+		if err = n.createDNSRecord(ip.String(), allZones[0].ID, a.DNSName+".", "A"); err != nil {
 			return
 		}
 
@@ -76,12 +84,12 @@ func (n *Node) createDNSRecords() (err error) {
 		if err != nil {
 			return err
 		}
-		zoneID, err := n.oc.CreateArpaZone(ip.String())
+		zoneID, err := n.createArpaZone(ip.String())
 		if err != nil {
 			return err
 		}
 		n.log.Debug("Create PTR recordset: ", a.DNSName, zoneID, arpa)
-		if err = n.oc.CreateDNSRecord(a.DNSName+".", zoneID, arpa, "PTR"); err != nil {
+		if err = n.createDNSRecord(a.DNSName+".", zoneID, arpa, "PTR"); err != nil {
 			return err
 		}
 	}
@@ -91,7 +99,7 @@ func (n *Node) createDNSRecords() (err error) {
 
 func (n *Node) getRules() (r config.Rule, err error) {
 	var funcMap = template.FuncMap{
-		"imageToID":                n.oc.GetImageID,
+		"imageToID":                n.getImageID,
 		"getMatchingFlavorForNode": n.getMatchingFlavorFor,
 		"getRootDeviceSize":        n.getRootDeviceSize,
 		"getPortGroupUUID":         n.createPortGroup,
@@ -249,5 +257,158 @@ func (n *Node) addHostToAggregate(host, az string) (err error) {
 		r := aggregates.AddHost(cl, aggregate.ID, aggregates.AddHostOpts{Host: host})
 		return r.Err
 	}
+	return
+}
+
+func (n *Node) createArpaZone(ip string) (zoneID string, err error) {
+	c, err := n.oc.GetServiceClient("dns")
+	if err != nil {
+		return
+	}
+	arpaZone, err := reverseZone(ip)
+	if err != nil {
+		return
+	}
+
+	allPages, err := zones.List(c, zones.ListOpts{
+		Name: arpaZone,
+	}).AllPages()
+	if err != nil {
+		return
+	}
+	allZones, err := zones.ExtractZones(allPages)
+	if err != nil {
+		return
+	}
+
+	if len(allZones) == 0 {
+		z, err := zones.Create(c, zones.CreateOpts{
+			Name:        arpaZone,
+			TTL:         3600,
+			Description: "An in-addr.arpa. zone for reverse lookups set up by baremetal temper",
+			Email:       "stefan.hipfel@sap.com",
+		}).Extract()
+		if err != nil {
+			return zoneID, err
+		}
+		zoneID = z.ID
+	} else {
+		zoneID = allZones[0].ID
+	}
+	return
+}
+
+func (n *Node) createDNSRecord(ip, zoneID, recordName, rType string) (err error) {
+	c, err := n.oc.GetServiceClient("dns")
+	if err != nil {
+		return
+	}
+	_, err = recordsets.Create(c, zoneID, recordsets.CreateOpts{
+		Name:    recordName,
+		TTL:     3600,
+		Type:    rType,
+		Records: []string{ip},
+	}).Extract()
+	if httpStatus, ok := err.(gophercloud.ErrDefault409); ok {
+		if httpStatus.Actual == 409 {
+			// record already exists
+			return nil
+		}
+	}
+	return
+}
+
+func (n *Node) getImageID(name string) (id string, err error) {
+	cl, err := n.oc.GetServiceClient("compute")
+	if err != nil {
+		return
+	}
+	err = images.ListDetail(cl, images.ListOpts{Name: name, Status: "active"}).EachPage(
+		func(p pagination.Page) (bool, error) {
+			is, err := images.ExtractImages(p)
+			if err != nil {
+				return false, err
+			}
+			var latest time.Time
+			for _, i := range is {
+				//2021-06-28T14:04:58
+				if i.Name == name {
+					ts, err := time.Parse(time.RFC3339, i.Created)
+					if err != nil {
+						continue
+					}
+					if ts.After(latest) {
+						id = i.ID
+						latest = ts
+					}
+					continue
+				}
+			}
+			return true, nil
+		},
+	)
+	return
+}
+
+func (n *Node) getFlavorID(name string) (id string, err error) {
+	cl, err := n.oc.GetServiceClient("compute")
+	if err != nil {
+		return
+	}
+	err = flavors.ListDetail(cl, nil).EachPage(func(p pagination.Page) (bool, error) {
+		fs, err := flavors.ExtractFlavors(p)
+		if err != nil {
+			return true, err
+		}
+		for _, f := range fs {
+			if f.Name == name {
+				id = f.ID
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	return
+}
+
+func (n *Node) getConductorZone(name string) (id string, err error) {
+	cl, err := n.oc.GetServiceClient("compute")
+	if err != nil {
+		return
+	}
+	err = services.List(cl, services.ListOpts{Host: name}).EachPage(
+		func(p pagination.Page) (bool, error) {
+			svs, err := services.ExtractServices(p)
+			if err != nil {
+				return true, err
+			}
+			for _, sv := range svs {
+				if sv.Host == name {
+					id = sv.Zone
+					return true, nil
+				}
+			}
+			return false, nil
+		})
+	return
+}
+
+func (n *Node) getNetwork(name string) (net servers.Network, err error) {
+	pr, err := clients.NewProviderClient(n.cfg.Deployment.Openstack)
+	if err != nil {
+		return
+	}
+	nc, err := openstack.NewNetworkV2(pr, gophercloud.EndpointOpts{
+		Region: n.cfg.Region,
+	})
+	p, err := networks.List(nc, networks.ListOpts{Name: name}).AllPages()
+	if err != nil {
+		return
+	}
+	ns, err := networks.ExtractNetworks(p)
+	if err != nil || len(ns) != 1 {
+		return
+	}
+	net.UUID = ns[0].ID
 	return
 }

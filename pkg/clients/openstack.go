@@ -2,24 +2,14 @@ package clients
 
 import (
 	"fmt"
-	"net/http"
 	"os"
-	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/config"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/apiversions"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/services"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/images"
-	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
-	"github.com/gophercloud/gophercloud/openstack/dns/v2/recordsets"
-	"github.com/gophercloud/gophercloud/openstack/dns/v2/zones"
 	iDservices "github.com/gophercloud/gophercloud/openstack/identity/v3/services"
-	"github.com/gophercloud/gophercloud/openstack/networking/v2/networks"
-	"github.com/gophercloud/gophercloud/pagination"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -174,170 +164,4 @@ func (c *Openstack) ServiceEnabled(service string) (bool, error) {
 
 func (c *Openstack) getAPIVersion() (*apiversions.APIVersion, error) {
 	return apiversions.Get(c.Clients["baremetal"], "v1").Extract()
-}
-
-func (c *Openstack) CreateArpaZone(ip string) (zoneID string, err error) {
-	arpaZone, err := reverseZone(ip)
-	if err != nil {
-		return
-	}
-
-	allPages, err := zones.List(c.Clients["dns"], zones.ListOpts{
-		Name: arpaZone,
-	}).AllPages()
-	if err != nil {
-		return
-	}
-	allZones, err := zones.ExtractZones(allPages)
-	if err != nil {
-		return
-	}
-
-	if len(allZones) == 0 {
-		z, err := zones.Create(c.Clients["dns"], zones.CreateOpts{
-			Name:        arpaZone,
-			TTL:         3600,
-			Description: "An in-addr.arpa. zone for reverse lookups set up by baremetal temper",
-			Email:       "stefan.hipfel@sap.com",
-		}).Extract()
-		if err != nil {
-			return zoneID, err
-		}
-		zoneID = z.ID
-	} else {
-		zoneID = allZones[0].ID
-	}
-	return
-}
-
-func (c *Openstack) CreateDNSRecord(ip, zoneID, recordName, rType string) (err error) {
-	_, err = recordsets.Create(c.Clients["dns"], zoneID, recordsets.CreateOpts{
-		Name:    recordName,
-		TTL:     3600,
-		Type:    rType,
-		Records: []string{ip},
-	}).Extract()
-	if httpStatus, ok := err.(gophercloud.ErrDefault409); ok {
-		if httpStatus.Actual == 409 {
-			// record already exists
-			return nil
-		}
-	}
-	return
-}
-
-func (c *Openstack) GetImageID(name string) (id string, err error) {
-	cl, err := c.GetServiceClient("compute")
-	if err != nil {
-		return
-	}
-	err = images.ListDetail(cl, images.ListOpts{Name: name, Status: "active"}).EachPage(
-		func(p pagination.Page) (bool, error) {
-			is, err := images.ExtractImages(p)
-			if err != nil {
-				return false, err
-			}
-			var latest time.Time
-			for _, i := range is {
-				//2021-06-28T14:04:58
-				if i.Name == name {
-					ts, err := time.Parse(time.RFC3339, i.Created)
-					if err != nil {
-						continue
-					}
-					if ts.After(latest) {
-						id = i.ID
-						latest = ts
-					}
-					continue
-				}
-			}
-			return true, nil
-		},
-	)
-	return
-}
-
-func (c *Openstack) GetFlavorID(name string) (id string, err error) {
-	cl, err := c.GetServiceClient("compute")
-	if err != nil {
-		return
-	}
-	err = flavors.ListDetail(cl, nil).EachPage(func(p pagination.Page) (bool, error) {
-		fs, err := flavors.ExtractFlavors(p)
-		if err != nil {
-			return true, err
-		}
-		for _, f := range fs {
-			if f.Name == name {
-				id = f.ID
-				return true, nil
-			}
-		}
-		return false, nil
-	})
-	return
-}
-
-func (c *Openstack) GetConductorZone(name string) (id string, err error) {
-	cl, err := c.GetServiceClient("compute")
-	if err != nil {
-		return
-	}
-	err = services.List(cl, services.ListOpts{Host: name}).EachPage(
-		func(p pagination.Page) (bool, error) {
-			svs, err := services.ExtractServices(p)
-			if err != nil {
-				return true, err
-			}
-			for _, sv := range svs {
-				if sv.Host == name {
-					id = sv.Zone
-					return true, nil
-				}
-			}
-			return false, nil
-		})
-	return
-}
-
-func (c *Openstack) GetNetwork(name string) (n servers.Network, err error) {
-	pr, err := NewProviderClient(c.cfg.Deployment.Openstack)
-	if err != nil {
-		return
-	}
-	nc, err := openstack.NewNetworkV2(pr, gophercloud.EndpointOpts{
-		Region: c.cfg.Region,
-	})
-	p, err := networks.List(nc, networks.ListOpts{Name: name}).AllPages()
-	if err != nil {
-		return
-	}
-	ns, err := networks.ExtractNetworks(p)
-	if err != nil || len(ns) != 1 {
-		return
-	}
-	n.UUID = ns[0].ID
-	return
-}
-
-func (c *Openstack) CreatePortGroup(pg PortGroup) (uuid string, err error) {
-	cl, err := c.GetServiceClient("baremetal")
-	if err != nil {
-		return
-	}
-	u := cl.ServiceURL("v1/portgroups")
-	reqBody, err := pg.ToPortCreateMap()
-	r := PortGroup{}
-	if err != nil {
-		return
-	}
-	resp, err := cl.Post(u, reqBody, &r, nil)
-	if err != nil {
-		return
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return uuid, fmt.Errorf("error creating port group: %s", err.Error())
-	}
-	return r.UUID, err
 }
