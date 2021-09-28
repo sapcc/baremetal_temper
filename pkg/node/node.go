@@ -49,7 +49,6 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 	if len(strings.Split(name, "-")) != 2 {
 		return n, fmt.Errorf("wrong node name format. e.g. node001-ap001")
 	}
-
 	n = &Node{
 		Name:       name,
 		Status:     "progress",
@@ -66,16 +65,16 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 	if err != nil {
 		return n, fmt.Errorf("cannot create netbox client: %s", err.Error())
 	}
-	n.initTaskExecs()
-	return
-}
-
-func (n *Node) Setup() (err error) {
 	if err = n.createRedfishClient(); err != nil {
 		err = fmt.Errorf("cannot create redfish client: %s", err.Error())
 		n.Status = "failed"
 		return
 	}
+	n.initTaskExecs()
+	return
+}
+
+func (n *Node) Setup() (err error) {
 	if err = n.Redfish.Power(false, false); err != nil {
 		n.Status = "failed"
 		err = fmt.Errorf("cannot power on node: %s", err.Error())
