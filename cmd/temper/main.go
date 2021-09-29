@@ -50,9 +50,9 @@ func main() {
 	srv := &http.Server{
 		Addr: "0.0.0.0:80",
 		// Good practice to set timeouts to avoid Slowloris attacks.
-		WriteTimeout: time.Second * 15,
-		ReadTimeout:  time.Second * 15,
-		IdleTimeout:  time.Second * 60,
+		WriteTimeout: time.Second * 61,
+		ReadTimeout:  time.Second * 61,
+		IdleTimeout:  time.Second * 61,
 		Handler:      s.Router,
 	}
 
