@@ -50,10 +50,11 @@ func main() {
 	srv := &http.Server{
 		Addr: "0.0.0.0:80",
 		// Good practice to set timeouts to avoid Slowloris attacks.
-		WriteTimeout: time.Second * 61,
-		ReadTimeout:  time.Second * 61,
-		IdleTimeout:  time.Second * 61,
-		Handler:      s.Router,
+		WriteTimeout: time.Second * 15,
+		// https://operations.global.cloud.sap/docs/support/playbook/kubernetes/idle_http_keep_alive_timeout.html
+		ReadTimeout: time.Second * 61,
+		IdleTimeout: time.Second * 61,
+		Handler:     s.Router,
 	}
 
 	go func() {

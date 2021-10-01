@@ -94,10 +94,12 @@ func (p *Hpe) getNetworkDevices() (err error) {
 			return err
 		}
 
-		// compare hex mac address
+		// sort hex mac address
 		sort.Slice(r.PhysicalPorts, func(i, j int) bool {
-			mac1, _ := strconv.ParseInt(r.PhysicalPorts[i].MACAddress, 16, 64)
-			mac2, _ := strconv.ParseInt(r.PhysicalPorts[j].MACAddress, 16, 64)
+			s1 := strings.ReplaceAll(r.PhysicalPorts[i].MACAddress, ":", "")
+			s2 := strings.ReplaceAll(r.PhysicalPorts[j].MACAddress, ":", "")
+			mac1, _ := strconv.ParseInt(s1, 16, 64)
+			mac2, _ := strconv.ParseInt(s2, 16, 64)
 			return mac1 < mac2
 		})
 		for i, e := range r.PhysicalPorts {
