@@ -197,6 +197,13 @@ func (n *Node) mergeInterfaces() (err error) {
 	if err != nil {
 		return
 	}
+	sort.Slice(nd.Interfaces, func(i, j int) bool {
+		nic1 := nd.Interfaces[i].Nic * 10
+		port1 := nd.Interfaces[i].PortNumber
+		nic2 := nd.Interfaces[j].Nic * 10
+		port2 := nd.Interfaces[j].PortNumber
+		return nic1+port1 < nic2+port2
+	})
 	rd.Inventory.BmcAddress = nd.DNSName
 	sort.Slice(rd.Inventory.Interfaces, func(i, j int) bool {
 		//make sure nic = 0 port = x is always smaller than a nic = 1, port = x
@@ -206,33 +213,30 @@ func (n *Node) mergeInterfaces() (err error) {
 		port2 := rd.Inventory.Interfaces[j].Port
 		return nic1+port1 < nic2+port2
 	})
-	rdfInterfaces := make(map[int]map[int]_redfish.Interface, 0)
-	nicI := 0
-	nic := 0
-	for _, intf := range rd.Inventory.Interfaces {
-		if nic < intf.Nic {
-			nicI++
-		}
-		if rdfInterfaces[nicI] == nil {
-			rdfInterfaces[nicI] = make(map[int]_redfish.Interface, 0)
-		}
-		rdfInterfaces[nicI][intf.Port] = intf
-		nic = intf.Nic
-	}
 	interfaces := make([]netbox.NodeInterface, 0)
+	i := 0
 	for _, intf := range nd.Interfaces {
-		rdIntf, ok := rdfInterfaces[intf.Nic][intf.PortNumber]
-		if ok {
-			intf.Mac = rdIntf.MacAddress
-			intf.PortLinkStatus = rdIntf.PortLinkStatus
-			if intf.Nic != 0 {
-				intf.RedfishName = fmt.Sprintf("PCI%d-port%d", rdIntf.Nic, rdIntf.Port)
-			} else {
-				intf.RedfishName = fmt.Sprintf("L%d", rdIntf.Port)
+		redfishIntf := rd.Inventory.Interfaces[i]
+		intf.Mac = redfishIntf.MacAddress
+		intf.PortLinkStatus = redfishIntf.PortLinkStatus
+		if intf.Nic == 0 {
+			if redfishIntf.Nic != 0 {
+				continue
 			}
+			intf.RedfishName = fmt.Sprintf("L%d", redfishIntf.Port)
+			i++
 			n.log.Debugf("found interface: %s, redfish: %s, mac: %s", intf.Name, intf.RedfishName, intf.Mac)
 			interfaces = append(interfaces, intf)
+			continue
 		}
+		if redfishIntf.Nic == 0 {
+			i++
+			continue
+		}
+		intf.RedfishName = fmt.Sprintf("PCI%d-port%d", redfishIntf.Nic, redfishIntf.Port)
+		i++
+		n.log.Debugf("found interface: %s, redfish: %s, mac: %s", intf.Name, intf.RedfishName, intf.Mac)
+		interfaces = append(interfaces, intf)
 	}
 	nd.Interfaces = interfaces
 	return

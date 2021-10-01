@@ -30,6 +30,7 @@ import (
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/stmcginnis/gofish/redfish"
 )
 
@@ -37,6 +38,7 @@ type Netbox struct {
 	Data   *Data
 	client *clients.Netbox
 	node   string
+	log    *log.Entry
 }
 
 type Data struct {
@@ -65,7 +67,7 @@ func New(node string, cfg config.Config, ctxLogger *logrus.Entry) (*Netbox, erro
 	if err != nil {
 		return nil, err
 	}
-	return &Netbox{client: c, node: node}, nil
+	return &Netbox{client: c, node: node, log: ctxLogger}, nil
 }
 
 func (n *Netbox) GetData() (*Data, error) {
@@ -161,11 +163,11 @@ func (n *Netbox) Update(serialNumber string) error {
 			Context: context.Background(),
 		}, nil)
 		if err != nil {
-			//n.log.Error(err)
+			n.log.Error(err)
 			return nil
 		}
 		if len(ips.Payload.Results) > 1 || len(ips.Payload.Results) == 0 {
-			//n.log.Errorf("could not find ip %s", n.PrimaryIP)
+			n.log.Error("could not find primary ip")
 			return nil
 		}
 		params.PrimaryIp4 = &ips.Payload.Results[0].ID
@@ -173,12 +175,12 @@ func (n *Netbox) Update(serialNumber string) error {
 
 	_, err := n.updateNodeInfo(params)
 	if err != nil {
-		//n.log.Error(err)
+		n.log.Error(err)
 		return nil
 	}
 
 	if err = n.updateNodeInterfaces(); err != nil {
-		//n.log.Error(err)
+		n.log.Error(err)
 		return nil
 	}
 
@@ -202,7 +204,7 @@ func (n *Netbox) setStatusStaged() error {
 		Comments: "temper successful",
 	})
 	if err != nil {
-		//n.log.Error(err)
+		n.log.Error(err)
 		return nil
 	}
 	if *p.Payload.Status.Value != models.DeviceWithConfigContextStatusValueStaged {
@@ -218,7 +220,7 @@ func (n *Netbox) setStatusFailed() (err error) {
 		Comments: "temper failed: check config context",
 	})
 	if err != nil {
-		//n.log.Error(err)
+		n.log.Error(err)
 		return nil
 	}
 	if *p.Payload.Status.Value != models.DeviceWithConfigContextStatusValueFailed {
@@ -229,13 +231,13 @@ func (n *Netbox) setStatusFailed() (err error) {
 
 //LoadInterfaces loads additional node interface info
 func (n *Netbox) loadInterfaces() (err error) {
-	//n.log.Debug("calling netbox api to load node interfaces")
+	n.log.Debug("calling netbox api to load node interfaces")
 	n.Data.Interfaces = make([]NodeInterface, 0)
-	in, err := n.getInterfaces()
+	intfs, err := n.getInterfaces()
 	if err != nil {
 		return
 	}
-	for _, in := range in {
+	for _, in := range intfs {
 		var (
 			ip     net.IP
 			device map[string]interface{}
@@ -247,29 +249,16 @@ func (n *Netbox) loadInterfaces() (err error) {
 			strings.Contains(*in.Name, "LAG") {
 			continue
 		}
-
 		if in.ConnectionStatus != nil {
 			conn = in.ConnectedEndpoint.(map[string]interface{})
 			device = conn["device"].(map[string]interface{})
 			ip, err = n.getInterfaceIP(fmt.Sprintf("%v", device["id"]))
 			if err != nil {
-				//n.log.Error(err)
+				n.log.Error(err)
 				continue
 			}
 		}
-		re := regexp.MustCompile("[0-9]+")
-		nicPort := re.FindAllString(*in.Name, -1)
-		nic := 0
-		port := 0
-		if len(nicPort) == 0 {
-			continue
-		}
-		if len(nicPort) == 2 {
-			nic, _ = strconv.Atoi(nicPort[0])
-			port, _ = strconv.Atoi(nicPort[1])
-		} else {
-			port, _ = strconv.Atoi(nicPort[0])
-		}
+		nic, port := n.getNicPort(*in.Name, intfs)
 
 		intf := NodeInterface{}
 		intf.Nic = nic
@@ -361,5 +350,22 @@ func (n *Netbox) GetAvailabilityZone(block string) (az string, err error) {
 		return az, fmt.Errorf("error finding az: could not get rack list")
 	}
 	az = *d.Payload.Results[0].Site.Slug
+	return
+}
+
+func (n *Netbox) getNicPort(name string, intfs []*models.Interface) (nic, port int) {
+	re := regexp.MustCompile("[0-9]+")
+	nicPort := re.FindAllString(name, -1)
+	nic = 0
+	port = 0
+	if len(nicPort) == 0 {
+		return
+	}
+	if len(nicPort) == 2 {
+		nic, _ = strconv.Atoi(nicPort[0])
+		port, _ = strconv.Atoi(nicPort[1])
+	} else {
+		port, _ = strconv.Atoi(nicPort[0])
+	}
 	return
 }
