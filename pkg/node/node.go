@@ -171,7 +171,7 @@ func (n *Node) createRedfishClient() (err error) {
 		return
 	}
 
-	lenovo := regexp.MustCompile(`SR950`)
+	lenovo := regexp.MustCompile(`SR950|SR650`)
 	dell := regexp.MustCompile(`R640|R740|R840`)
 	hpe := regexp.MustCompile(`DL560|DL360`)
 
