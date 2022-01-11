@@ -27,3 +27,5 @@ require (
 replace github.com/netbox-community/go-netbox => github.com/stefanhipfel/go-netbox v0.0.0-20200928114340-fcd4119414a4
 
 replace github.com/stmcginnis/gofish => github.com/stefanhipfel/gofish v0.9.1-0.20210423073907-81e338649907
+
+replace go.mongodb.org/mongo-driver => go.mongodb.org/mongo-driver v1.7.3

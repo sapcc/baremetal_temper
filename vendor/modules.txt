@@ -240,7 +240,7 @@ github.com/zclconf/go-cty/cty/function/stdlib
 github.com/zclconf/go-cty/cty/gocty
 github.com/zclconf/go-cty/cty/json
 github.com/zclconf/go-cty/cty/set
-# go.mongodb.org/mongo-driver v1.7.3
+# go.mongodb.org/mongo-driver v1.7.3 => go.mongodb.org/mongo-driver v1.7.3
 go.mongodb.org/mongo-driver/bson
 go.mongodb.org/mongo-driver/bson/bsoncodec
 go.mongodb.org/mongo-driver/bson/bsonoptions
@@ -322,3 +322,4 @@ k8s.io/apimachinery/pkg/util/wait
 k8s.io/klog/v2
 # github.com/netbox-community/go-netbox => github.com/stefanhipfel/go-netbox v0.0.0-20200928114340-fcd4119414a4
 # github.com/stmcginnis/gofish => github.com/stefanhipfel/gofish v0.9.1-0.20210423073907-81e338649907
+# go.mongodb.org/mongo-driver => go.mongodb.org/mongo-driver v1.7.3
