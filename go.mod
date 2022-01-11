@@ -8,7 +8,7 @@ require (
 	github.com/ciscoecosystem/aci-go-client v1.10.1
 	github.com/evalphobia/logrus_sentry v0.8.2
 	github.com/getsentry/raven-go v0.2.0 // indirect
-	github.com/go-openapi/runtime v0.19.21
+	github.com/go-openapi/runtime v0.21.0
 	github.com/go-ping/ping v0.0.0-20201115131931-3300c582a663
 	github.com/gophercloud/gophercloud v0.14.0
 	github.com/gorilla/mux v1.8.0
@@ -17,9 +17,9 @@ require (
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/viper v1.7.1
 	github.com/stmcginnis/gofish v0.7.0
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
 	github.com/vaughan0/go-ini v0.0.0-20130923145212-a98ad7ee00ec // indirect
-	gopkg.in/yaml.v2 v2.3.0
+	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/apimachinery v0.20.0
 
 )
