@@ -209,9 +209,6 @@ func (p *Default) Power(forceOff bool, restart bool) (err error) {
 	if s[0].PowerState == redfish.OffPowerState {
 		p.log.Debug("node power on")
 		err = s[0].Reset(redfish.OnResetType)
-		// lets give the server some time to fully boot,
-		// otherwise redfish resources may not be ready (e.g. ports)
-		time.Sleep(5 * time.Minute)
 	}
 	return
 }
@@ -234,7 +231,13 @@ func (p *Default) WaitPowerStateOn() (err error) {
 		}
 		return true, nil
 	})
-	return wait.Poll(10*time.Second, 5*time.Minute, cf)
+	if err = wait.Poll(10*time.Second, 5*time.Minute, cf); err != nil {
+		return
+	}
+	// lets give the server some time to fully boot. powerON state is not sufficient in most cases
+	// otherwise redfish resources may not be ready (e.g. ports)
+	time.Sleep(5 * time.Minute)
+	return
 }
 
 func (p *Default) getVendorData() (err error) {
