@@ -22,16 +22,26 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	log "github.com/sirupsen/logrus"
 	"github.com/stmcginnis/gofish/common"
 	"github.com/stmcginnis/gofish/redfish"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 type Hpe struct {
 	Default
+}
+
+type hpeOem struct {
+	Oem struct {
+		Hpe struct {
+			PostState string
+		}
+	}
 }
 
 func NewHpe(remoteIP string, cfg config.Config, ctxLogger *log.Entry) (Redfish, error) {
@@ -39,6 +49,31 @@ func NewHpe(remoteIP string, cfg config.Config, ctxLogger *log.Entry) (Redfish, 
 	c.SetEndpoint(remoteIP)
 	r := &Hpe{Default: Default{client: c, cfg: cfg, log: ctxLogger}}
 	return r, r.check()
+}
+
+func (d *Hpe) WaitPowerStateOn() (err error) {
+	defer d.client.Logout()
+	if err = d.client.Connect(); err != nil {
+		return
+	}
+	d.log.Infof("waiting for node to power on")
+	cf := wait.ConditionFunc(func() (bool, error) {
+		resp, err := d.client.Client.Get("/redfish/v1/Systems/1/")
+		if err != nil {
+			return false, nil
+		}
+		var r hpeOem
+		err = json.NewDecoder(resp.Body).Decode(&r)
+		if err != nil {
+			return false, err
+		}
+		d.log.Debugf("node power state: %s", r.Oem.Hpe.PostState)
+		if r.Oem.Hpe.PostState != "FinishedPost" && r.Oem.Hpe.PostState != "InPostDiscoveryComplete" {
+			return false, nil
+		}
+		return true, nil
+	})
+	return wait.Poll(10*time.Second, 30*time.Minute, cf)
 }
 
 func (d *Hpe) GetData() (*Data, error) {

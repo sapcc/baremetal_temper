@@ -80,6 +80,11 @@ func (n *Node) Setup() (err error) {
 		err = fmt.Errorf("cannot power on node: %s", err.Error())
 		return
 	}
+	if err = n.Redfish.WaitPowerStateOn(); err != nil {
+		n.Status = "failed"
+		err = fmt.Errorf("node does not power on: %s", err.Error())
+		return
+	}
 	return n.mergeInterfaces()
 }
 
