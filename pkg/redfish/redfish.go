@@ -225,7 +225,7 @@ func (p *Default) WaitPowerStateOn() (err error) {
 			return false, fmt.Errorf("cannot power on node")
 		}
 		power := sys[0].PowerState
-		p.log.Debugf("node power state: %s", p)
+		p.log.Debugf("node power state: %s", power)
 		if power != redfish.OnPowerState {
 			return false, nil
 		}
