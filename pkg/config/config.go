@@ -10,7 +10,7 @@ import (
 type Config struct {
 	Openstack       OpenstackAuth `yaml:"openstack"`
 	Inspector       Inspector     `yaml:"inspector"`
-	Redfish         Redfish       `yaml:"wathever"`
+	Redfish         Redfish       `yaml:"redfish"`
 	Netbox          NetboxAuth    `yaml:"netbox"`
 	Arista          AristaAuth    `yaml:"arista"`
 	Aci             AciAuth       `yaml:"aci"`
