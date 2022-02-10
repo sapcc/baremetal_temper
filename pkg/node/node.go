@@ -176,18 +176,22 @@ func (n *Node) createRedfishClient() (err error) {
 		return
 	}
 
-	lenovo := regexp.MustCompile(`SR950|SR650|SR850P`)
-	dell := regexp.MustCompile(`R640|R730|R740|R840`)
-	hpe := regexp.MustCompile(`DL560|DL360`)
+	lenovo := regexp.MustCompile(`(?i)SR950|SR650|SR850P`)
+	dell := regexp.MustCompile(`(?i)R640|R730|R740|R840`)
+	hpe := regexp.MustCompile(`(?i)DL560|DL360`)
 
 	switch {
 	case lenovo.MatchString(*d.Device.DeviceType.Model):
+		n.log.Info("loading LENOVO redfish client")
 		n.Redfish, err = _redfish.NewLenovo(d.RemoteIP, n.cfg, n.log)
 	case dell.MatchString(*d.Device.DeviceType.Model):
+		n.log.Info("loading DELL redfish client")
 		n.Redfish, err = _redfish.NewDell(d.RemoteIP, n.cfg, n.log)
 	case hpe.MatchString(*d.Device.DeviceType.Model):
+		n.log.Info("loading HPE redfish client")
 		n.Redfish, err = _redfish.NewHpe(d.RemoteIP, n.cfg, n.log)
 	default:
+		n.log.Info("loading DEFAULT redfish client")
 		n.Redfish, err = _redfish.NewDefault(d.RemoteIP, n.cfg, n.log)
 	}
 	return
