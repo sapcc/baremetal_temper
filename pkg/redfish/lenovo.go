@@ -161,8 +161,6 @@ func (p *Lenovo) getDisks() (err error) {
 		panic("unable to detect root disk")
 	}
 	p.Data.RootDisk = rootDisk
-	fmt.Println(p.Data.RootDisk)
-	fmt.Println(p.Data.Inventory.Disks)
 	return
 }
 
