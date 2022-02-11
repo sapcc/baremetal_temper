@@ -132,12 +132,18 @@ func (n *Node) DeleteNode() (err error) {
 	cfp := wait.ConditionFunc(func() (bool, error) {
 		err = nodes.Delete(c, n.UUID).ExtractErr()
 		if err != nil {
-			return false, err
+			switch err.(type) {
+			case gophercloud.ErrDefault409:
+				n.log.Debug("trying to delete locked node")
+				return false, nil
+			default:
+				return false, err
+			}
 		}
 		return true, nil
 	})
 
-	return wait.Poll(5*time.Second, 30*time.Second, cfp)
+	return wait.Poll(10*time.Second, 120*time.Second, cfp)
 }
 
 //CheckCreated checks if node was created
@@ -198,7 +204,7 @@ func (n *Node) changePowerState(powerState nodes.TargetPowerState) (err error) {
 	if r.Err != nil {
 		switch r.Err.(type) {
 		case gophercloud.ErrDefault409:
-			return fmt.Errorf("cannot power on node %s", n.UUID)
+			return fmt.Errorf("cannot power on node %s: 409", n.UUID)
 		default:
 			return fmt.Errorf("cannot power on node %s", n.UUID)
 		}
@@ -448,11 +454,11 @@ func (n *Node) applyRules() (err error) {
 		})
 	}
 	if err = n.updatePorts(updatePorts); err != nil {
-		panic("cannot apply rules. err: " + err.Error())
+		panic("cannot apply port rules. err: " + err.Error())
 	}
 
 	if err = n.updateNode(updateNode); err != nil {
-		panic("cannot apply rules. err: " + err.Error())
+		panic("cannot apply node rules. err: " + err.Error())
 	}
 	return
 }
@@ -562,6 +568,15 @@ func (n *Node) createPortGroup(name string) (id string, err error) {
 	if err != nil {
 		return
 	}
+	if resp.StatusCode == http.StatusConflict {
+		u := cl.ServiceURL("v1/portgroups/" + name)
+		pg := clients.PortGroup{}
+		resp, err = cl.Get(u, &pg, nil)
+		if resp.StatusCode != http.StatusOK {
+			return id, fmt.Errorf("error creating port group: %s", err.Error())
+		}
+		return pg.UUID, err
+	}
 	if resp.StatusCode != http.StatusCreated {
 		return id, fmt.Errorf("error creating port group: %s", err.Error())
 	}
@@ -595,6 +610,7 @@ func (n *Node) updatePorts(opts ports.UpdateOpts) (err error) {
 			if err != nil {
 				switch err.(type) {
 				case gophercloud.ErrDefault409:
+					n.log.Debug("error updating ports: node locked")
 					//node is locked
 					return false, nil
 				}
@@ -602,7 +618,7 @@ func (n *Node) updatePorts(opts ports.UpdateOpts) (err error) {
 			}
 			return true, nil
 		})
-		if err = wait.Poll(5*time.Second, 60*time.Second, cf); err != nil {
+		if err = wait.Poll(10*time.Second, 180*time.Second, cf); err != nil {
 			return
 		}
 	}
@@ -624,5 +640,5 @@ func (n *Node) updateNode(opts nodes.UpdateOpts) (err error) {
 		}
 		return true, nil
 	})
-	return wait.Poll(5*time.Second, 180*time.Second, cf)
+	return wait.Poll(10*time.Second, 180*time.Second, cf)
 }
