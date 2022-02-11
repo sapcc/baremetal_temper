@@ -103,6 +103,69 @@ func (p *Lenovo) EjectMedia() (err error) {
 	return
 }
 
+func (p *Lenovo) getDisks() (err error) {
+	s, err := p.client.Client.Service.Systems()
+	if err != nil {
+		return
+	}
+	st, err := s[0].Storage()
+	rootDisk := RootDisk{
+		Rotational: true,
+	}
+	p.Data.Inventory.Disks = make([]Disk, 0)
+	for _, s := range st {
+		vols, err := s.Volumes()
+		if err != nil {
+			continue
+		}
+		// no raid
+		if len(vols) == 0 {
+			ds, err := s.Drives()
+			if err != nil {
+				continue
+			}
+			for _, s := range ds {
+				rotational := true
+				if s.RotationSpeedRPM == 0 {
+					rotational = false
+				}
+				disk := Disk{
+					Name:   s.Name,
+					Model:  s.Model,
+					Vendor: s.Manufacturer,
+					//inspector converts bytes to gibibyte
+					Size:       int64(float64(s.CapacityBytes) * 1.074),
+					Rotational: rotational,
+				}
+				p.Data.Inventory.Disks = append(p.Data.Inventory.Disks, disk)
+			}
+		} else {
+			for _, v := range vols {
+				ds, err := v.Drives()
+				if err != nil {
+					continue
+				}
+				rootDisk.Size = int64(float64(v.CapacityBytes) * 1.074)
+				rootDisk.Name = ds[0].Name
+				rootDisk.Model = ds[0].Model
+				rootDisk.Vendor = ds[0].Manufacturer
+				if ds[0].RotationSpeedRPM == 0 {
+					rootDisk.Rotational = false
+				} else {
+					rootDisk.Rotational = true
+				}
+			}
+		}
+	}
+	if rootDisk.Size == 0 {
+		panic("unable to detect root disk")
+	}
+	p.Data.RootDisk = rootDisk
+	fmt.Println(p.Data.RootDisk)
+	fmt.Println(p.Data.Inventory.Disks)
+	return
+}
+
 func (p *Lenovo) getNetworkDevices() (err error) {
 	ch, err := p.client.Client.Service.Chassis()
 	if err != nil {
