@@ -27,15 +27,15 @@ func loadNodes() (err error) {
 	ctxLogger := log.WithFields(log.Fields{
 		"cmd": "temper",
 	})
-	n, err := clients.NewNetbox(cfg, ctxLogger)
-	if err != nil {
-		return
-	}
 	if nodeQuery != "" {
+		n, err := clients.NewNetbox(cfg, ctxLogger)
+		if err != nil {
+			return err
+		}
 		nodes, err = n.LoadNodes(&nodeQuery, &nodeStatus, &cfg.Region)
 		if err != nil {
 			log.Errorf("error loading nodes: %s", err.Error())
-			return
+			return err
 		}
 	}
 	if len(nodes) == 0 {
