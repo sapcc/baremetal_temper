@@ -69,7 +69,6 @@ func (n *Node) initTaskExecs() {
 			{Fn: n.validate, Name: "ironic.validate"},
 		},
 		"prepare": {
-			{Fn: n.addToConductorGroup, Name: "ironic.prepare.addToConductorGroup"},
 			{Fn: func() error {
 				host := "nova-compute-ironic-" + strings.Split(n.Name, "-")[1]
 				_, err := n.enableComputeService(host)
@@ -84,6 +83,7 @@ func (n *Node) initTaskExecs() {
 				host := "nova-compute-ironic-" + block
 				return n.addHostToAggregate(host, az)
 			}, Name: "ironic.prepare.addHostToAggregate"},
+			{Fn: n.addToConductorGroup, Name: "ironic.prepare.addToConductorGroup"},
 		},
 		"test": {
 			{Fn: n.waitForNovaPropagation, Name: "ironic.test.waitForNovaPropagation"},

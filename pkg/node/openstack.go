@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"regexp"
 	"strconv"
 	"text/template"
 	"time"
@@ -138,6 +139,9 @@ func (n *Node) getRootDeviceSize() (size int64, err error) {
 	case 4:
 		size = 1000 * ((size + 900) / 1000)
 	}
+	if size == 0 {
+		return size, fmt.Errorf("could not get root disk size")
+	}
 	return
 }
 
@@ -154,17 +158,16 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 	//disk := 0.2
 	cpu := 0.1
 	var fl flavors.Flavor
+	flavorNameRules := regexp.MustCompile(`^zh.+|^hv_.+`)
 	err = flavors.ListDetail(c, flavors.ListOpts{AccessType: flavors.PublicAccess}).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
 			return false, err
 		}
 		for _, f := range fs {
-			/*
-				if !strings.HasPrefix(f.Name, "hv_") {
-					continue
-				}
-			*/
+			if !flavorNameRules.MatchString(f.Name) {
+				continue
+			}
 			deltaMem := calcDelta(f.RAM, data.Inventory.Memory.PhysicalMb)
 			//deltaDisk := calcDelta(f.Disk, int(data.RootDisk.Size/1024/1024/1024))
 			deltaCPU := calcDelta(f.VCPUs, data.Inventory.CPU.Count)
