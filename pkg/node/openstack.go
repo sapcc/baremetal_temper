@@ -334,6 +334,10 @@ func (n *Node) getImageID(name string) (id string, err error) {
 			}
 			var latest time.Time
 			for _, i := range is {
+				g, ok := i.Metadata["git_branch"]
+				if !ok || fmt.Sprintf("%v", g) != "master" {
+					continue
+				}
 				//2021-06-28T14:04:58
 				if i.Name == name {
 					ts, err := time.Parse(time.RFC3339, i.Created)
