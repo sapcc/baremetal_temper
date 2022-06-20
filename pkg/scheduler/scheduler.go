@@ -109,7 +109,7 @@ func (r *Scheduler) temper(n string) {
 		return
 	}
 	ni.AddTask("dns", "create")
-	ni.Temper(true, &wg)
+	ni.Temper(true, &wg, nil)
 	r.log.Infof("finished tempering node: %s", n)
 	r.Lock()
 	delete(r.nodesInProgress, n)

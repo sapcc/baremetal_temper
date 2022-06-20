@@ -88,13 +88,19 @@ func (n *Node) Setup() (err error) {
 	return n.mergeInterfaces()
 }
 
-func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup) {
+func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup, limiter chan bool) {
+	if limiter != nil {
+		limiter <- true
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			n.log.Errorf("aborting node temper: error  %s", r)
 			n.Status = "failed"
 		}
 		n.cleanupHandler(netboxSts)
+		if limiter != nil {
+			<-limiter
+		}
 		wg.Done()
 	}()
 	if err := n.Setup(); err != nil {

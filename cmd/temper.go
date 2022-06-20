@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"runtime"
 	"strings"
 	"sync"
 
@@ -26,6 +27,7 @@ import (
 )
 
 var tasks []string
+var workers int
 
 var runCmd = &cobra.Command{
 	Use:   "run",
@@ -36,6 +38,10 @@ var runCmd = &cobra.Command{
 		if err != nil {
 			log.Errorf("error loading nodes: %s", err.Error())
 			return
+		}
+		limiter := make(chan bool, workers)
+		if workers == 0 {
+			limiter = nil
 		}
 		for _, na := range nodes {
 			n, err := node.New(na, cfg)
@@ -55,7 +61,8 @@ var runCmd = &cobra.Command{
 					continue
 				}
 			}
-			go n.Temper(netboxStatus, &wg)
+			go n.Temper(netboxStatus, &wg, limiter)
+			log.Info("number of go-routines: ", runtime.NumGoroutine())
 		}
 		wg.Wait()
 		log.Info("command complete")
@@ -64,5 +71,6 @@ var runCmd = &cobra.Command{
 
 func init() {
 	runCmd.PersistentFlags().StringArrayVarP(&tasks, "tasks", "t", []string{}, "array of tasks to run e.g. 'ironic.create'")
+	runCmd.PersistentFlags().IntVarP(&workers, "workers", "w", 0, "number of max worker to execute tasks concurrently. Default is 0: infinite.")
 	rootCmd.AddCommand(runCmd)
 }

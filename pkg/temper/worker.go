@@ -57,7 +57,7 @@ func (w *Worker) Start() {
 					return
 				}
 				wg.Add(1)
-				job.Temper(true, &wg)
+				job.Temper(true, &wg, nil)
 				wg.Wait()
 				job.Updated = time.Now()
 				if err = job.Netbox.WriteLocalContextData(job.Tasks); err != nil {
