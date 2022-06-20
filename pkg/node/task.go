@@ -31,7 +31,6 @@ func (n *Node) initTaskExecs() {
 		},
 	}
 	if *n.cfg.Redfish.BootImage == "" {
-		n.log.Warning("did not find boot image for cable check. run check without it")
 		n.tasksExecs["diagnostics"] = map[string][]*netbox.Exec{
 			"cablecheck": {
 				{Fn: n.runACICheck, Name: "diagnostics.cablecheck.aci"},

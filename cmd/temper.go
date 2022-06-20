@@ -62,8 +62,8 @@ var runCmd = &cobra.Command{
 				}
 			}
 			go n.Temper(netboxStatus, &wg, limiter)
-			log.Info("number of go-routines: ", runtime.NumGoroutine())
 		}
+		log.Info("number of go-routines: ", runtime.NumGoroutine())
 		wg.Wait()
 		log.Info("command complete")
 	},

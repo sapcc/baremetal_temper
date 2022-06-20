@@ -138,4 +138,7 @@ func UnmarshalConfig(cfg *config.Config) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		log.Fatal(err.Error())
 	}
+	if *cfg.Redfish.BootImage == "" {
+		log.Warning("did not find boot image for cable check. run check without it")
+	}
 }

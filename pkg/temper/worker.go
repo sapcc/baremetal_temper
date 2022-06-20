@@ -51,11 +51,6 @@ func (w *Worker) Start() {
 					log.Error(err)
 					return
 				}
-				if err = job.Setup(); err != nil {
-					job.Status = "failed"
-					log.Error(err)
-					return
-				}
 				wg.Add(1)
 				job.Temper(true, &wg, nil)
 				wg.Wait()

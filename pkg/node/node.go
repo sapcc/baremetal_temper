@@ -61,20 +61,12 @@ func New(name string, cfg config.Config) (n *Node, err error) {
 	if cfg.Netbox.Token == "" {
 		return n, fmt.Errorf("missing netbox token")
 	}
-	n.Netbox, err = netbox.New(n.Name, cfg, ctxLogger)
-	if err != nil {
-		return n, fmt.Errorf("cannot create netbox client: %s", err.Error())
-	}
-	if err = n.createRedfishClient(); err != nil {
-		err = fmt.Errorf("cannot create redfish client: %s", err.Error())
-		n.Status = "failed"
-		return
-	}
+
 	n.initTaskExecs()
 	return
 }
 
-func (n *Node) Setup() (err error) {
+func (n *Node) getNodeReady() (err error) {
 	if err = n.Redfish.Power(false, false); err != nil {
 		n.Status = "failed"
 		err = fmt.Errorf("cannot power on node: %s", err.Error())
@@ -85,7 +77,20 @@ func (n *Node) Setup() (err error) {
 		err = fmt.Errorf("node does not power on: %s", err.Error())
 		return
 	}
-	return n.mergeInterfaces()
+	return
+}
+
+func (n *Node) setupClients() (err error) {
+	n.Netbox, err = netbox.New(n.Name, n.cfg, n.log)
+	if err != nil {
+		return fmt.Errorf("cannot create netbox client: %s", err.Error())
+	}
+	if err = n.createRedfishClient(); err != nil {
+		err = fmt.Errorf("cannot create redfish client: %s", err.Error())
+		n.Status = "failed"
+		return
+	}
+	return
 }
 
 func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup, limiter chan bool) {
@@ -103,7 +108,17 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup, limiter chan bool) {
 		}
 		wg.Done()
 	}()
-	if err := n.Setup(); err != nil {
+	if err := n.setupClients(); err != nil {
+		n.log.Error(err)
+		n.Status = "failed"
+		return
+	}
+	if err := n.getNodeReady(); err != nil {
+		n.log.Error(err)
+		n.Status = "failed"
+		return
+	}
+	if err := n.mergeInterfaces(); err != nil {
 		n.log.Error(err)
 		n.Status = "failed"
 		return
