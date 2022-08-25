@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	log "github.com/sirupsen/logrus"
 
@@ -129,6 +132,9 @@ func InitConfig() {
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
 		log.Info("Using config file:", viper.ConfigFileUsed())
+	} else {
+		log.Error(fmt.Sprintf("cannot read config file: %s", err.Error()))
+		os.Exit(1)
 	}
 	viper.AutomaticEnv() // read in environment variables that match
 	UnmarshalConfig(&cfg)
