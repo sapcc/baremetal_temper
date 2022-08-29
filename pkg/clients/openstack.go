@@ -30,6 +30,10 @@ type PortGroup struct {
 	Properties               map[string]interface{} `json:"properties,omitempty"`
 }
 
+type Console struct {
+	Enabled bool `json:"enabled"`
+}
+
 // ToPortCreateMap assembles a request body based on the contents of a CreateOpts.
 func (opts PortGroup) ToPortCreateMap() (map[string]interface{}, error) {
 	body, err := gophercloud.BuildRequestBody(opts, "")

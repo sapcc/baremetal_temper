@@ -538,6 +538,22 @@ func (n *Node) deployTestInstance() (err error) {
 	return
 }
 
+func (n *Node) console(enable bool) (err error) {
+	cl, err := n.oc.GetServiceClient("baremetal")
+	if err != nil {
+		return
+	}
+	u := cl.ServiceURL(fmt.Sprintf("v1/nodes/%s/states/console", n.UUID))
+	body := clients.Console{
+		Enabled: enable,
+	}
+	resp, err := cl.Put(u, body, nil, nil)
+	if resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("error updating console: %s", err.Error())
+	}
+	return
+}
+
 func (n *Node) createPortGroup(name string) (id string, err error) {
 	if n.PortGroupUUID != "" {
 		return n.PortGroupUUID, err

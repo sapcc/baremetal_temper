@@ -61,6 +61,7 @@ func (n *Node) initTaskExecs() {
 			{Fn: n.checkCreated, Name: "ironic.create.check"},
 			{Fn: TimeoutTask(30 * time.Second), Name: "ironic.create.wait"},
 			{Fn: n.applyRules, Name: "ironic.create.applyRules"},
+			{Fn: func() error { return n.console(true) }, Name: "ironic.create.console"},
 			{Fn: n.powerOn, Name: "ironic.create.powerOn"},
 			{Fn: n.provide, Name: "ironic.create.provide"},
 		},

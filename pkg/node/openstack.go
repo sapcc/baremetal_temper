@@ -258,6 +258,9 @@ func (n *Node) addHostToAggregate(host, az string) (err error) {
 	}
 	if !foundHost {
 		r := aggregates.AddHost(cl, aggregate.ID, aggregates.AddHostOpts{Host: host})
+		if r.Header.Values("Status")[0] == "409" {
+			return
+		}
 		return r.Err
 	}
 	return
