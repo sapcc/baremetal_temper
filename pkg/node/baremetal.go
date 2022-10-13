@@ -78,7 +78,7 @@ func (n *Node) create() (err error) {
 		panic("no interfaces with linkStatus up found. cannot create ironic node")
 	}
 	client := &http.Client{Timeout: 300 * time.Second}
-	u, err := url.Parse(fmt.Sprintf("http://%s", n.cfg.Inspector.Host))
+	u, err := url.Parse(n.cfg.Inspector.Host)
 	if err != nil {
 		panic("could not create ironic node: " + err.Error())
 	}
