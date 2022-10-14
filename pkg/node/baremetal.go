@@ -555,6 +555,10 @@ func (n *Node) console(enable bool) (err error) {
 }
 
 func (n *Node) createPortGroup(name string) (id string, err error) {
+	defer func() {
+		n.log.Debug(fmt.Sprintf("using portgroup uuid: %s", n.PortGroupUUID))
+	}()
+	n.log.Debug("calling create portgroup api")
 	if n.PortGroupUUID != "" {
 		return n.PortGroupUUID, err
 	}
@@ -576,28 +580,31 @@ func (n *Node) createPortGroup(name string) (id string, err error) {
 	}
 	u := cl.ServiceURL("v1/portgroups")
 	reqBody, err := pg.ToPortCreateMap()
-	r := clients.PortGroup{}
+	pgResponse := clients.PortGroup{}
 	if err != nil {
 		return
 	}
-	resp, err := cl.Post(u, reqBody, &r, nil)
+	resp, err := cl.Post(u, reqBody, &pgResponse, nil)
 	if err != nil {
 		return
 	}
 	if resp.StatusCode == http.StatusConflict {
+		n.log.Debug("fetching already existing portgroup")
 		u := cl.ServiceURL("v1/portgroups/" + name)
 		pg := clients.PortGroup{}
 		resp, err = cl.Get(u, &pg, nil)
 		if resp.StatusCode != http.StatusOK {
-			return id, fmt.Errorf("error creating port group: %s", err.Error())
+			return id, fmt.Errorf("error getting port group: %s", err.Error())
 		}
-		return pg.UUID, err
+		n.PortGroupUUID = pg.UUID
+		return n.PortGroupUUID, err
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return id, fmt.Errorf("error creating port group: %s", err.Error())
 	}
-	n.PortGroupUUID = id
-	return r.UUID, err
+	n.log.Debug("successfully created portgroup")
+	n.PortGroupUUID = pgResponse.UUID
+	return n.PortGroupUUID, err
 }
 
 func (n *Node) updatePorts(opts ports.UpdateOpts) (err error) {
