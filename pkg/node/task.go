@@ -84,6 +84,9 @@ func (n *Node) initTaskExecs() {
 				return n.addHostToAggregate(host, az)
 			}, Name: "ironic.prepare.addHostToAggregate"},
 			{Fn: n.addToConductorGroup, Name: "ironic.prepare.addToConductorGroup"},
+			{Fn: func() error {
+				return n.maintenance(true, "new ironic import. node in setup")
+			}, Name: "ironic.prepare.maintenance"},
 		},
 		"test": {
 			{Fn: n.waitForNovaPropagation, Name: "ironic.test.waitForNovaPropagation"},
