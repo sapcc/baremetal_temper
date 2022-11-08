@@ -32,6 +32,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/nodes"
 	"github.com/gophercloud/gophercloud/openstack/baremetal/v1/ports"
+	"github.com/gophercloud/gophercloud/openstack/baremetalintrospection/v1/introspection"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
 	"github.com/sapcc/baremetal_temper/pkg/clients"
@@ -77,7 +78,7 @@ func (n *Node) create() (err error) {
 	if len(data.Inventory.Interfaces) == 0 {
 		panic("no interfaces with linkStatus up found. cannot create ironic node")
 	}
-	client := &http.Client{Timeout: 300 * time.Second}
+	client := &http.Client{Timeout: 240 * time.Second}
 	u, err := url.Parse(n.cfg.Inspector.Host)
 	if err != nil {
 		panic("could not create ironic node: " + err.Error())
@@ -117,6 +118,14 @@ func (n *Node) create() (err error) {
 		panic("could not create ironic node: " + err.Error())
 	}
 	return
+}
+
+func (n *Node) getStatus() {
+	c, err := n.oc.GetServiceClient("baremetal")
+	if err != nil {
+		return
+	}
+	introspection.GetIntrospectionStatus(c, n.UUID)
 }
 
 //DeleteNode deletes a node via the baremetal api
@@ -166,6 +175,17 @@ func (n *Node) checkCreated() (err error) {
 	return
 }
 
+func (n *Node) maintenance(set bool, reason string) (err error) {
+	c, err := n.oc.GetServiceClient("baremetal")
+	if err != nil {
+		return
+	}
+	if set {
+		return nodes.SetMaintenance(c, n.UUID, nodes.MaintenanceOpts{Reason: reason}).ExtractErr()
+	}
+	return nodes.UnsetMaintenance(c, n.UUID).ExtractErr()
+}
+
 //setupConductorGroup prepares the node for customers.
 //Removes resource_class, sets the rightful conductor and maintenance to true
 func (n *Node) addToConductorGroup() (err error) {
@@ -179,11 +199,6 @@ func (n *Node) addToConductorGroup() (err error) {
 			Op:    nodes.ReplaceOp,
 			Path:  "/conductor_group",
 			Value: conductor,
-		},
-		nodes.UpdateOperation{
-			Op:    nodes.ReplaceOp,
-			Path:  "/maintenance",
-			Value: true,
 		},
 	}
 	return n.updateNode(opts)
@@ -408,7 +423,8 @@ func (n *Node) waitForNovaPropagation() (err error) {
 	}
 	n.log.Debug("waiting for nova propagation")
 	cfp := wait.ConditionFunc(func() (bool, error) {
-		p, err := hypervisors.List(c).AllPages()
+
+		p, err := hypervisors.List(c, hypervisors.ListOpts{}).AllPages()
 		if err != nil {
 			return false, err
 		}
@@ -602,7 +618,6 @@ func (n *Node) createPortGroup(name string) (id string, err error) {
 	if resp.StatusCode != http.StatusCreated {
 		return id, fmt.Errorf("error creating port group: %s", err.Error())
 	}
-	n.log.Debug("successfully created portgroup")
 	n.PortGroupUUID = pgResponse.UUID
 	return n.PortGroupUUID, err
 }
@@ -629,7 +644,8 @@ func (n *Node) updatePorts(opts ports.UpdateOpts) (err error) {
 
 	for _, p := range ps {
 		cf := wait.ConditionFunc(func() (bool, error) {
-			_, err = ports.Update(c, p.UUID, opts).Extract()
+			r, err := ports.Update(c, p.UUID, opts).Extract()
+			n.log.Debugf("updating port %s with portgroup %s", r.UUID, r.PortGroupUUID)
 			if err != nil {
 				switch err.(type) {
 				case gophercloud.ErrDefault409:
