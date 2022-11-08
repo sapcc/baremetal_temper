@@ -423,7 +423,8 @@ func (n *Node) waitForNovaPropagation() (err error) {
 	}
 	n.log.Debug("waiting for nova propagation")
 	cfp := wait.ConditionFunc(func() (bool, error) {
-		p, err := hypervisors.List(c).AllPages()
+
+		p, err := hypervisors.List(c, hypervisors.ListOpts{}).AllPages()
 		if err != nil {
 			return false, err
 		}
