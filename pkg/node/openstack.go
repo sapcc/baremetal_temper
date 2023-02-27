@@ -39,9 +39,10 @@ import (
 	"github.com/gophercloud/gophercloud/pagination"
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-//CreateDNSRecords For creates a dns record for the given node if not exists
+// CreateDNSRecords For creates a dns record for the given node if not exists
 func (n *Node) createDNSRecords() (err error) {
 	c, err := n.oc.GetServiceClient("dns")
 	if err != nil {
@@ -190,37 +191,50 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 	return
 }
 
-func (n *Node) enableComputeService(host string) (id string, err error) {
+func (n *Node) enableComputeService(svc services.Service) (id string, err error) {
 	cl, err := n.oc.GetServiceClient("compute")
 	if err != nil {
 		return
 	}
 	cl.Microversion = "2.53"
-	ps := services.List(cl, services.ListOpts{Host: host})
-	p, err := ps.AllPages()
-	if err != nil {
-		return
-	}
-	var svc services.Service
-	svcs, err := services.ExtractServices(p)
-	if err != nil {
-		return
-	}
-	for _, s := range svcs {
-		if s.Host == host {
-			svc = s
-			break
-		}
-	}
-	if svc.Status == "" {
-		n.log.Warnf("compute service %s does not exist yet", host)
-		return
-	}
 	if svc.Status == string(services.ServiceDisabled) {
 		r := services.Update(cl, svc.ID, services.UpdateOpts{Status: services.ServiceEnabled})
 		return svc.ID, r.Err
 	}
 	return
+}
+
+func (n *Node) waitComputeServiceCreated(host string) (svc services.Service, err error) {
+	cl, err := n.oc.GetServiceClient("compute")
+	if err != nil {
+		return
+	}
+	cl.Microversion = "2.53"
+	n.log.Debug("waiting compute service to be created")
+	cf := wait.ConditionFunc(func() (bool, error) {
+		ps := services.List(cl, services.ListOpts{Host: host})
+		p, err := ps.AllPages()
+		if err != nil {
+			return false, nil
+		}
+		//var svc services.Service
+		svcs, err := services.ExtractServices(p)
+		if err != nil {
+			return false, err
+		}
+		for _, s := range svcs {
+			if s.Host == host {
+				svc = s
+				break
+			}
+		}
+		if svc.Status == "" {
+			n.log.Debugf("compute service %s does not exist yet", host)
+			return false, nil
+		}
+		return true, nil
+	})
+	return svc, wait.Poll(20*time.Second, 11*time.Minute, cf)
 }
 
 func (n *Node) addHostToAggregate(host, az string) (err error) {

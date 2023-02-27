@@ -71,7 +71,11 @@ func (n *Node) initTaskExecs() {
 		"prepare": {
 			{Fn: func() error {
 				host := "nova-compute-ironic-" + strings.Split(n.Name, "-")[1]
-				_, err := n.enableComputeService(host)
+				svc, err := n.waitComputeServiceCreated(host)
+				if err != nil {
+					return fmt.Errorf("timed out waiting for compute service {%s} to be created", host)
+				}
+				_, err = n.enableComputeService(svc)
 				return err
 			}, Name: "ironic.prepare.enableComputeService"},
 			{Fn: func() error {
