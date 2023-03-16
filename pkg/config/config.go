@@ -4,24 +4,26 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"gopkg.in/yaml.v2"
 )
 
 type Config struct {
-	Openstack       OpenstackAuth `yaml:"openstack"`
-	Inspector       Inspector     `yaml:"inspector"`
-	Redfish         Redfish       `yaml:"redfish"`
-	Netbox          NetboxAuth    `yaml:"netbox"`
-	Arista          AristaAuth    `yaml:"arista"`
-	Aci             AciAuth       `yaml:"aci"`
-	Awx             AwxAuth       `yaml:"awx"`
-	NetboxNodesPath string        `yaml:"netboxNodesPath"`
-	RulesPath       string        `yaml:"rulesPath"`
-	Region          string        `yaml:"region"`
-	NetboxQuery     *string       `yaml:"netboxQuery"`
-	Domain          string        `yaml:"domain"`
-	NameSpace       string        `yaml:"namespace"`
-	Deployment      Deployment    `yaml:"deployment"`
+	Openstack        OpenstackAuth `yaml:"openstack"`
+	Inspector        Inspector     `yaml:"inspector"`
+	Redfish          Redfish       `yaml:"redfish"`
+	Netbox           NetboxAuth    `yaml:"netbox"`
+	Arista           AristaAuth    `yaml:"arista"`
+	Aci              AciAuth       `yaml:"aci"`
+	Awx              AwxAuth       `yaml:"awx"`
+	NetboxNodesPath  string        `yaml:"netboxNodesPath"`
+	RulesPath        string        `yaml:"rulesPath"`
+	Region           string        `yaml:"region"`
+	NetboxQuery      *string       `yaml:"netboxQuery"`
+	Domain           string        `yaml:"domain"`
+	NameSpace        string        `yaml:"namespace"`
+	Deployment       Deployment    `yaml:"deployment"`
+	FlavorAccessType flavors.AccessType
 }
 
 type Inspector struct {

@@ -160,7 +160,7 @@ func (n *Node) getMatchingFlavorFor() (name string, err error) {
 	cpu := 0.1
 	var fl flavors.Flavor
 	flavorNameRules := regexp.MustCompile(`^zh.+|^hv_.+`)
-	err = flavors.ListDetail(c, flavors.ListOpts{AccessType: flavors.PublicAccess}).EachPage(func(p pagination.Page) (bool, error) {
+	err = flavors.ListDetail(c, flavors.ListOpts{AccessType: n.cfg.FlavorAccessType}).EachPage(func(p pagination.Page) (bool, error) {
 		fs, err := flavors.ExtractFlavors(p)
 		if err != nil {
 			return false, err

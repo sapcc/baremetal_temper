@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gophercloud/gophercloud/openstack/compute/v2/flavors"
 	"github.com/sapcc/baremetal_temper/pkg/node"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -28,6 +29,7 @@ import (
 
 var tasks []string
 var workers int
+var flavorPrivateAccess bool
 
 var runCmd = &cobra.Command{
 	Use:   "run",
@@ -42,6 +44,11 @@ var runCmd = &cobra.Command{
 		limiter := make(chan bool, workers)
 		if workers == 0 {
 			limiter = nil
+		}
+		if flavorPrivateAccess {
+			cfg.FlavorAccessType = flavors.PrivateAccess
+		} else {
+			cfg.FlavorAccessType = flavors.PublicAccess
 		}
 		for _, na := range nodes {
 			n, err := node.New(na, cfg)
@@ -72,5 +79,6 @@ var runCmd = &cobra.Command{
 func init() {
 	runCmd.PersistentFlags().StringArrayVarP(&tasks, "tasks", "t", []string{}, "array of tasks to run e.g. 'ironic.create'")
 	runCmd.PersistentFlags().IntVarP(&workers, "workers", "w", 0, "number of max worker to execute tasks concurrently. Default is 0: infinite.")
+	runCmd.PersistentFlags().BoolVar(&flavorPrivateAccess, "flavor_private_access", true, "set flavor accessType")
 	rootCmd.AddCommand(runCmd)
 }
