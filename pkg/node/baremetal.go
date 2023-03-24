@@ -35,13 +35,15 @@ import (
 	"github.com/gophercloud/gophercloud/openstack/baremetalintrospection/v1/introspection"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/extensions/hypervisors"
 	"github.com/gophercloud/gophercloud/openstack/compute/v2/servers"
+	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
+	"github.com/gophercloud/gophercloud/pagination"
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	_redfish "github.com/sapcc/baremetal_temper/pkg/redfish"
 	"github.com/stmcginnis/gofish/redfish"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-//NodeAlreadyExists custom error
+// NodeAlreadyExists custom error
 type AlreadyExists struct {
 	Err string
 }
@@ -50,17 +52,17 @@ func (n *AlreadyExists) Error() string {
 	return n.Err
 }
 
-//InspectorErr custom error struct for inspector callback errors
+// InspectorErr custom error struct for inspector callback errors
 type InspectorErr struct {
 	Error ErrorMessage `json:"error"`
 }
 
-//ErrorMessage message struct for InspectorErr
+// ErrorMessage message struct for InspectorErr
 type ErrorMessage struct {
 	Message string `json:"message"`
 }
 
-//Create creates a new ironic node based on the provided ironic model
+// Create creates a new ironic node based on the provided ironic model
 func (n *Node) create() (err error) {
 	data, err := n.Redfish.GetData()
 	if err != nil {
@@ -128,7 +130,7 @@ func (n *Node) getStatus() {
 	introspection.GetIntrospectionStatus(c, n.UUID)
 }
 
-//DeleteNode deletes a node via the baremetal api
+// DeleteNode deletes a node via the baremetal api
 func (n *Node) DeleteNode() (err error) {
 	if n.UUID == "" {
 		return
@@ -155,7 +157,7 @@ func (n *Node) DeleteNode() (err error) {
 	return wait.Poll(10*time.Second, 120*time.Second, cfp)
 }
 
-//CheckCreated checks if node was created
+// CheckCreated checks if node was created
 func (n *Node) checkCreated() (err error) {
 	if n.UUID == "" {
 		return
@@ -186,8 +188,8 @@ func (n *Node) maintenance(set bool, reason string) (err error) {
 	return nodes.UnsetMaintenance(c, n.UUID).ExtractErr()
 }
 
-//setupConductorGroup prepares the node for customers.
-//Removes resource_class, sets the rightful conductor and maintenance to true
+// setupConductorGroup prepares the node for customers.
+// Removes resource_class, sets the rightful conductor and maintenance to true
 func (n *Node) addToConductorGroup() (err error) {
 	if err = n.loadBaremetalNodeInfo(); err != nil {
 		return
@@ -204,7 +206,7 @@ func (n *Node) addToConductorGroup() (err error) {
 	return n.updateNode(opts)
 }
 
-//PowerOn powers on the node
+// PowerOn powers on the node
 func (n *Node) changePowerState(powerState nodes.TargetPowerState) (err error) {
 	c, err := n.oc.GetServiceClient("baremetal")
 	if err != nil {
@@ -239,7 +241,7 @@ func (n *Node) changePowerState(powerState nodes.TargetPowerState) (err error) {
 	return wait.Poll(5*time.Second, 120*time.Second, cf)
 }
 
-//PowerOn powers on the node
+// PowerOn powers on the node
 func (n *Node) powerOn() (err error) {
 	if err = n.changePowerState(nodes.PowerOn); err != nil {
 		panic("cannot power on node")
@@ -247,12 +249,12 @@ func (n *Node) powerOn() (err error) {
 	return
 }
 
-//PowerOff node off
+// PowerOff node off
 func (n *Node) powerOff() (err error) {
 	return n.changePowerState(nodes.PowerOff)
 }
 
-//Validate calls the baremetal validate api
+// Validate calls the baremetal validate api
 func (n *Node) validate() (err error) {
 	c, err := n.oc.GetServiceClient("baremetal")
 	if err != nil {
@@ -283,7 +285,7 @@ func (n *Node) validate() (err error) {
 	return
 }
 
-//DeleteTestInstance deletes the test instance via the nova api
+// DeleteTestInstance deletes the test instance via the nova api
 func (n *Node) DeleteTestInstance() (err error) {
 	c, err := n.oc.GetServiceClient("compute")
 	if err != nil {
@@ -296,8 +298,8 @@ func (n *Node) DeleteTestInstance() (err error) {
 	return servers.WaitForStatus(c, n.InstanceUUID, "DELETED", 60)
 }
 
-//Provide sets node provisionstate to provided (available).
-//Needed to deploy a test instance on this node
+// Provide sets node provisionstate to provided (available).
+// Needed to deploy a test instance on this node
 func (n *Node) provide() (err error) {
 	c, err := n.oc.GetServiceClient("baremetal")
 	if err != nil {
@@ -411,8 +413,8 @@ func (n *Node) loadBaremetalNodeInfo() (err error) {
 	return
 }
 
-//WaitForNovaPropagation calls the hypervisor api to check if new node has been
-//propagated to nova
+// WaitForNovaPropagation calls the hypervisor api to check if new node has been
+// propagated to nova
 func (n *Node) waitForNovaPropagation() (err error) {
 	c, err := n.oc.GetServiceClient("compute")
 	if err != nil {
@@ -445,7 +447,7 @@ func (n *Node) waitForNovaPropagation() (err error) {
 	return wait.Poll(10*time.Second, 20*time.Minute, cfp)
 }
 
-//ApplyRules applies rules from a json file
+// ApplyRules applies rules from a json file
 func (n *Node) applyRules() (err error) {
 	n.log.Debug("applying rules on node")
 	rules, err := n.getRules()
@@ -479,7 +481,7 @@ func (n *Node) applyRules() (err error) {
 	return
 }
 
-//DeployTestInstance creates a new test instance on the newly created node
+// DeployTestInstance creates a new test instance on the newly created node
 func (n *Node) deployTestInstance() (err error) {
 	c, err := n.oc.GetServiceClient("compute")
 	if err != nil {
@@ -568,6 +570,33 @@ func (n *Node) console(enable bool) (err error) {
 		return fmt.Errorf("error updating console: %s", err.Error())
 	}
 	return
+}
+
+func (n *Node) getSwiftImageName(container, prefix string) (name string, err error) {
+	cl, err := n.oc.GetServiceClient("object")
+	if err != nil {
+		return
+	}
+	opts := objects.ListOpts{
+		Full:   true,
+		Prefix: prefix,
+	}
+	pager := objects.List(cl, container, opts)
+	latestObject := objects.Object{}
+	err = pager.EachPage(func(page pagination.Page) (bool, error) {
+		actual, err := objects.ExtractInfo(page)
+		if err != nil {
+			return false, err
+		}
+		for _, n := range actual {
+			if n.LastModified.After(latestObject.LastModified) {
+				latestObject = n
+			}
+		}
+
+		return true, nil
+	})
+	return latestObject.Name, err
 }
 
 func (n *Node) createPortGroup(name string) (id string, err error) {

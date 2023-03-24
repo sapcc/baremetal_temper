@@ -105,6 +105,7 @@ func (n *Node) getRules() (r config.Rule, err error) {
 		"getMatchingFlavorForNode": n.getMatchingFlavorFor,
 		"getRootDeviceSize":        n.getRootDeviceSize,
 		"getPortGroupUUID":         n.createPortGroup,
+		"getSwiftImageName":        n.getSwiftImageName,
 	}
 
 	tmpl := template.New("rules.json").Funcs(funcMap)

@@ -13,7 +13,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-//Openstack is
+// Openstack is
 type Openstack struct {
 	Clients map[string]*gophercloud.ServiceClient
 	log     *log.Entry
@@ -43,7 +43,7 @@ func (opts PortGroup) ToPortCreateMap() (map[string]interface{}, error) {
 	return body, nil
 }
 
-//NodeNotFoundError error for missing node
+// NodeNotFoundError error for missing node
 type NodeNotFoundError struct {
 	Err string
 }
@@ -52,7 +52,7 @@ func (n *NodeNotFoundError) Error() string {
 	return n.Err
 }
 
-//NewClient creates a new client containing different openstack-clients (baremetal, compute, dns)
+// NewClient creates a new client containing different openstack-clients (baremetal, compute, dns)
 func NewClient(cfg config.Config, ctxLogger *log.Entry) *Openstack {
 	return &Openstack{cfg: cfg, log: ctxLogger, Clients: make(map[string]*gophercloud.ServiceClient, 0)}
 }
@@ -102,6 +102,15 @@ func (oc *Openstack) GetServiceClient(client string) (c *gophercloud.ServiceClie
 			return nil, err
 		}
 		oc.Clients["network"] = c
+		return c, err
+	case "object":
+		c, err := openstack.NewObjectStorageV1(provider, gophercloud.EndpointOpts{
+			Region: oc.cfg.Region,
+		})
+		if err != nil {
+			return nil, err
+		}
+		oc.Clients["object"] = c
 		return c, err
 	case "baremetal":
 		c, err := openstack.NewBareMetalV1(provider, gophercloud.EndpointOpts{
