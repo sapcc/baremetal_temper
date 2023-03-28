@@ -118,6 +118,7 @@ func (n *Node) getRules() (r config.Rule, err error) {
 	out := new(bytes.Buffer)
 	d := map[string]interface{}{
 		"node":      n.Name,
+		"region":    n.cfg.Region,
 		"inventory": data.Inventory,
 	}
 	err = t.Execute(out, d)
