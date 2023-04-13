@@ -192,7 +192,7 @@ type NetworkPort struct {
 	// capabilities of the port, irrespective of transient conditions such as
 	// cabling, interface module presence, or remote link partner status or
 	// configuration.
-	SupportedLinkCapabilities interface{}
+	SupportedLinkCapabilities []SupportedLinkCapabilities
 	// VendorID shall indicate the Vendor Identification string information as
 	// provided by the manufacturer of this port.
 	VendorID string `json:"VendorId"`

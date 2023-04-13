@@ -5,19 +5,19 @@ import (
 	"fmt"
 
 	runtimeclient "github.com/go-openapi/runtime/client"
-	netboxclient "github.com/netbox-community/go-netbox/netbox/client"
-	"github.com/netbox-community/go-netbox/netbox/client/dcim"
+	netboxclient "github.com/netbox-community/go-netbox/v3/netbox/client"
+	"github.com/netbox-community/go-netbox/v3/netbox/client/dcim"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	log "github.com/sirupsen/logrus"
 )
 
-//NetboxClient is ..
+// NetboxClient is ..
 type Netbox struct {
 	Client *netboxclient.NetBoxAPI
 	log    *log.Entry
 }
 
-//NewNetboxClient creates netbox client instance
+// NewNetboxClient creates netbox client instance
 func NewNetbox(cfg config.Config, ctxLogger *log.Entry) (n *Netbox, err error) {
 	tlsClient, err := runtimeclient.TLSClient(runtimeclient.TLSClientOptions{InsecureSkipVerify: true})
 	if err != nil {
@@ -33,7 +33,7 @@ func NewNetbox(cfg config.Config, ctxLogger *log.Entry) (n *Netbox, err error) {
 	return
 }
 
-//LoadNodes loads all nodes with role server
+// LoadNodes loads all nodes with role server
 func (n *Netbox) LoadNodes(query, status, region *string) (nodes []string, err error) {
 	nodes = make([]string, 0)
 	role := "server"

@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/netbox-community/go-netbox/netbox/models"
+	"github.com/netbox-community/go-netbox/v3/netbox/models"
 )
 
 type ConfigContext struct {

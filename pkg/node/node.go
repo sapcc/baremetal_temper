@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/netbox-community/go-netbox/netbox/models"
+	"github.com/netbox-community/go-netbox/v3/netbox/models"
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sapcc/baremetal_temper/pkg/netbox"
