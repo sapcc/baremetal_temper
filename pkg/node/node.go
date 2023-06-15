@@ -99,8 +99,13 @@ func (n *Node) Temper(netboxSts bool, wg *sync.WaitGroup, limiter chan bool) {
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			n.log.Errorf("aborting node temper: error  %s", r)
+			n.log.Errorf("aborting node temper: %s", r)
 			n.Status = "failed"
+			if n.Netbox.Data.Device == nil {
+				n.log.Errorf("no cleanup needed, failed at getting netbox data")
+				wg.Done()
+				return
+			}
 		}
 		n.cleanupHandler(netboxSts)
 		if limiter != nil {
@@ -168,7 +173,7 @@ func (n *Node) cleanupHandler(netboxSts bool) {
 	}
 	if n.InstanceUUID != "" {
 		if err := n.DeleteTestInstance(); err != nil {
-			n.log.Error("cannot delete compute instance %s. err: %s", n.InstanceUUID, err.Error())
+			n.log.Errorf("cannot delete compute instance %s. err: %s", n.InstanceUUID, err.Error())
 		}
 	}
 	if n.Status == "failed" {
@@ -194,11 +199,11 @@ func recoverTaskExec(n *Node) {
 func (n *Node) createRedfishClient() (err error) {
 	d, err := n.Netbox.GetData()
 	if err != nil {
-		return
+		panic("cannot get netbox data: " + err.Error())
 	}
 
 	lenovo := regexp.MustCompile(`(?i)SR950|SR650|SR850P`)
-	dell := regexp.MustCompile(`(?i)R640|R730|R740|R840`)
+	dell := regexp.MustCompile(`(?i)R640|R730|R740|R760|R840`)
 	hpe := regexp.MustCompile(`(?i)DL560|DL360`)
 
 	switch {

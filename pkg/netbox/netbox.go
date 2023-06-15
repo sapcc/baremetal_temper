@@ -89,7 +89,7 @@ func (n *Netbox) GetData() (*Data, error) {
 	return n.Data, nil
 }
 
-//LoadIpamAddresses loads all ipam addresse of a node
+// LoadIpamAddresses loads all ipam addresse of a node
 func (n *Netbox) loadIpamAddresses(node string) (err error) {
 	//n.log.Debug("calling netbox api to load ipam Addresses")
 	split := strings.Split(node, "-")
@@ -152,7 +152,7 @@ func (n *Netbox) getDeviceConfig(id, name *string) (d *models.DeviceWithConfigCo
 	return l.Payload.Results[0], err
 }
 
-//Update node serial and primaryIP. Does not return error to not trigger errorhandler and cleanup of node
+// Update node serial and primaryIP. Does not return error to not trigger errorhandler and cleanup of node
 func (n *Netbox) Update(serialNumber string) error {
 	params := models.WritableDeviceWithConfigContext{
 		Serial: serialNumber,
@@ -187,7 +187,7 @@ func (n *Netbox) Update(serialNumber string) error {
 	return nil
 }
 
-//SetStatus does not return error to not trigger errorhandler and cleanup of node
+// SetStatus does not return error to not trigger errorhandler and cleanup of node
 func (n *Netbox) SetStatus(status string) (err error) {
 	if status == "failed" {
 		err = n.setStatusFailed()
@@ -197,7 +197,7 @@ func (n *Netbox) SetStatus(status string) (err error) {
 	return
 }
 
-//SetStatusStaged does not return error to not trigger errorhandler and cleanup of node
+// SetStatusStaged does not return error to not trigger errorhandler and cleanup of node
 func (n *Netbox) setStatusStaged() error {
 	p, err := n.updateNodeInfo(models.WritableDeviceWithConfigContext{
 		Status:   models.DeviceWithConfigContextStatusValueStaged,
@@ -213,7 +213,7 @@ func (n *Netbox) setStatusStaged() error {
 	return nil
 }
 
-//SetStatusFailed sets status to failed in netbox
+// SetStatusFailed sets status to failed in netbox
 func (n *Netbox) setStatusFailed() (err error) {
 	p, err := n.updateNodeInfo(models.WritableDeviceWithConfigContext{
 		Status:   models.DeviceWithConfigContextStatusValueFailed,
@@ -229,7 +229,7 @@ func (n *Netbox) setStatusFailed() (err error) {
 	return
 }
 
-//LoadInterfaces loads additional node interface info
+// LoadInterfaces loads additional node interface info
 func (n *Netbox) loadInterfaces() (err error) {
 	n.log.Debug("calling netbox api to load node interfaces")
 	n.Data.Interfaces = make([]NodeInterface, 0)
