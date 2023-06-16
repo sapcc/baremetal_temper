@@ -478,6 +478,7 @@ func (n *Node) applyRules() (err error) {
 	if err = n.updateNode(updateNode); err != nil {
 		panic("cannot apply node rules. err: " + err.Error())
 	}
+
 	return
 }
 
@@ -642,6 +643,19 @@ func (n *Node) createPortGroup(name string) (id string, err error) {
 			return id, fmt.Errorf("error getting port group: %s", err.Error())
 		}
 		n.PortGroupUUID = pg.UUID
+		n.log.Debug("patching already existing portgroup")
+		opts := ports.UpdateOpts{
+			ports.UpdateOperation{
+				Path:  "/address",
+				Op:    ports.ReplaceOp,
+				Value: data.Inventory.Interfaces[0].MacAddress,
+			},
+		}
+		resp, err = cl.Patch(u, opts, &pgResponse, nil)
+		if err != nil {
+			return id, fmt.Errorf("error patching port group: %s", err.Error())
+		}
+		n.log.Debugf("successfully patched existing portgroup: %s", pgResponse.Address)
 		return n.PortGroupUUID, err
 	}
 	if resp.StatusCode != http.StatusCreated {

@@ -13,8 +13,9 @@ type Rule struct {
 }
 
 type Property struct {
-	Node []NodeConfig `json:"node"`
-	Port []PortConfig `json:"port"`
+	Node      []NodeConfig `json:"node"`
+	Port      []PortConfig `json:"port"`
+	PortGroup []PortConfig `json:"port_group"`
 }
 
 type NodeConfig struct {
