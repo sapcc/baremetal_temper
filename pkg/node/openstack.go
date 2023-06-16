@@ -21,8 +21,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"text/template"
 	"time"
 
@@ -106,20 +108,25 @@ func (n *Node) getRules() (r config.Rule, err error) {
 		"getRootDeviceSize":        n.getRootDeviceSize,
 		"getPortGroupUUID":         n.createPortGroup,
 		"getSwiftImageName":        n.getSwiftImageName,
+		"hasPrefix":                strings.HasPrefix,
 	}
 
-	tmpl := template.New("rules.json").Funcs(funcMap)
+	tmpl := template.New(filepath.Base(n.cfg.RulesPath)).Funcs(funcMap)
 	t, err := tmpl.ParseFiles(n.cfg.RulesPath)
 	if err != nil {
 		return r, fmt.Errorf("Error parsing rules: %s", err.Error())
 	}
 
 	data, err := n.Redfish.GetData()
+	if err != nil {
+		return
+	}
 	out := new(bytes.Buffer)
 	d := map[string]interface{}{
 		"node":      n.Name,
 		"region":    n.cfg.Region,
 		"inventory": data.Inventory,
+		"nics":      data.Inventory.Interfaces,
 	}
 	err = t.Execute(out, d)
 	if err != nil {

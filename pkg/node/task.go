@@ -65,6 +65,9 @@ func (n *Node) initTaskExecs() {
 			{Fn: n.powerOn, Name: "ironic.create.powerOn"},
 			{Fn: n.provide, Name: "ironic.create.provide"},
 		},
+		"apply_rules": {
+			{Fn: n.applyRules, Name: "ironic.applyRules"},
+		},
 		"validate": {
 			{Fn: n.validate, Name: "ironic.validate"},
 		},
