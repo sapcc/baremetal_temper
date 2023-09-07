@@ -18,15 +18,16 @@ package netbox
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/netbox-community/go-netbox/netbox/client/dcim"
-	"github.com/netbox-community/go-netbox/netbox/client/ipam"
-	"github.com/netbox-community/go-netbox/netbox/models"
+	"github.com/netbox-community/go-netbox/v3/netbox/client/dcim"
+	"github.com/netbox-community/go-netbox/v3/netbox/client/ipam"
+	"github.com/netbox-community/go-netbox/v3/netbox/models"
 	"github.com/sapcc/baremetal_temper/pkg/clients"
 	"github.com/sapcc/baremetal_temper/pkg/config"
 	"github.com/sirupsen/logrus"
@@ -239,9 +240,9 @@ func (n *Netbox) loadInterfaces() (err error) {
 	}
 	for _, in := range intfs {
 		var (
-			ip     net.IP
-			device map[string]interface{}
-			conn   map[string]interface{}
+			ip      net.IP
+			devices []map[string]interface{}
+			conn    map[string]interface{}
 		)
 		if !strings.Contains(*in.Name, "PCI") &&
 			!strings.Contains(*in.Name, "NIC") &&
@@ -249,27 +250,28 @@ func (n *Netbox) loadInterfaces() (err error) {
 			strings.Contains(*in.Name, "LAG") {
 			continue
 		}
-		if in.ConnectionStatus != nil {
-			conn = in.ConnectedEndpoint.(map[string]interface{})
-			device = conn["device"].(map[string]interface{})
-			ip, err = n.getInterfaceIP(fmt.Sprintf("%v", device["id"]))
+		json.Unmarshal([]byte(*in.ConnectedEndpoints[0]), &devices)
+		for _, d := range devices {
+			device := d["device"].(map[string]interface{})
+			ip, err = n.getInterfaceIP(fmt.Sprintf("%v", d["id"]))
 			if err != nil {
 				n.log.Error(err)
 				continue
 			}
-		}
-		nic, port := n.getNicPort(*in.Name, intfs)
+			nic, port := n.getNicPort(*in.Name, intfs)
 
-		intf := NodeInterface{}
-		intf.Nic = nic
-		intf.PortNumber = port
-		if ip != nil {
-			intf.Connection = fmt.Sprintf("%v", device["name"])
-			intf.ConnectionIP = ip.String()
-			intf.Port = fmt.Sprintf("%v", conn["name"])
+			intf := NodeInterface{}
+			intf.Nic = nic
+			intf.PortNumber = port
+			if ip != nil {
+				intf.Connection = fmt.Sprintf("%v", device["name"])
+				intf.ConnectionIP = ip.String()
+				intf.Port = fmt.Sprintf("%v", conn["name"])
+			}
+			intf.Name = *in.Name
+			n.Data.Interfaces = append(n.Data.Interfaces, intf)
 		}
-		intf.Name = *in.Name
-		n.Data.Interfaces = append(n.Data.Interfaces, intf)
+
 	}
 	return
 }
@@ -315,7 +317,7 @@ func (n *Netbox) updateNodeInterfaces() (err error) {
 
 func (n *Netbox) getInterfaces() (in []*models.Interface, err error) {
 	l, err := n.client.Client.Dcim.DcimInterfacesList(&dcim.DcimInterfacesListParams{
-		Device:  &n.Data.Device.DisplayName,
+		Device:  &n.Data.Device.Display,
 		Context: context.Background(),
 	}, nil)
 	if err != nil {
@@ -323,7 +325,7 @@ func (n *Netbox) getInterfaces() (in []*models.Interface, err error) {
 	}
 	in = l.Payload.Results
 	if len(in) == 0 {
-		return in, fmt.Errorf("could not find interfaces for node with name %s", n.Data.Device.DisplayName)
+		return in, fmt.Errorf("could not find interfaces for node with name %s", n.Data.Device.Display)
 	}
 	return
 }

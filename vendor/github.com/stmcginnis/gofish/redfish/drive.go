@@ -155,7 +155,7 @@ type Drive struct {
 	HotspareType HotspareType
 	// Identifiers shall contain a list of all known durable
 	// names for the associated drive.
-	Identifiers []common.Identifier `json:"-"`
+	Identifiers []common.Identifier
 	// IndicatorLED shall contain the indicator light state for the indicator
 	// light associated with this drive.
 	IndicatorLED common.IndicatorLED
