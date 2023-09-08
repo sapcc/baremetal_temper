@@ -31,6 +31,20 @@ import (
 	"github.com/go-openapi/validate"
 )
 
+type ConnectedEndpointDevice struct {
+	ID int `json:"id,omitempty"`
+	Display string `json:"display,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+type ConnectedEndpoint struct {
+	ID int `json:"id,omitempty"`
+	Url string `json:"url,omitempty"`
+	Device *ConnectedEndpointDevice `json:"device,omitempty"`
+	Name string `json:"name,omitempty"`
+	cable int `json:"cable,omitempty"`
+}
+
 // Interface interface
 //
 // swagger:model Interface
@@ -55,7 +69,7 @@ type Interface struct {
 	// Return the appropriate serializer for the type of connected object.
 	//
 	// Read Only: true
-	ConnectedEndpoints []*string `json:"connected_endpoints"`
+	ConnectedEndpoints []*ConnectedEndpoint `json:"connected_endpoints"`
 
 	// Connected endpoints reachable
 	// Read Only: true
@@ -124,7 +138,7 @@ type Interface struct {
 	// Return the appropriate serializer for the link termination model.
 	//
 	// Read Only: true
-	LinkPeers []*string `json:"link_peers"`
+	LinkPeers []interface{} `json:"link_peers"`
 
 	// Link peers type
 	// Read Only: true
@@ -1144,7 +1158,7 @@ func (m *Interface) contextValidateCableEnd(ctx context.Context, formats strfmt.
 
 func (m *Interface) contextValidateConnectedEndpoints(ctx context.Context, formats strfmt.Registry) error {
 
-	if err := validate.ReadOnly(ctx, "connected_endpoints", "body", []*string(m.ConnectedEndpoints)); err != nil {
+	if err := validate.ReadOnly(ctx, "connected_endpoints", "body", []*ConnectedEndpoint(m.ConnectedEndpoints)); err != nil {
 		return err
 	}
 
@@ -1289,7 +1303,7 @@ func (m *Interface) contextValidateLastUpdated(ctx context.Context, formats strf
 
 func (m *Interface) contextValidateLinkPeers(ctx context.Context, formats strfmt.Registry) error {
 
-	if err := validate.ReadOnly(ctx, "link_peers", "body", []*string(m.LinkPeers)); err != nil {
+	if err := validate.ReadOnly(ctx, "link_peers", "body", []interface{}{m.LinkPeers}); err != nil {
 		return err
 	}
 

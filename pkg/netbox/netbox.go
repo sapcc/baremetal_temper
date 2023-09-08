@@ -18,7 +18,6 @@ package netbox
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"regexp"
@@ -155,6 +154,7 @@ func (n *Netbox) getDeviceConfig(id, name *string) (d *models.DeviceWithConfigCo
 
 // Update node serial and primaryIP. Does not return error to not trigger errorhandler and cleanup of node
 func (n *Netbox) Update(serialNumber string) error {
+	n.Data.Device.Serial = serialNumber
 	params := models.WritableDeviceWithConfigContext{
 		Serial: serialNumber,
 	}
@@ -209,7 +209,7 @@ func (n *Netbox) setStatusStaged() error {
 		return nil
 	}
 	if *p.Payload.Status.Value != models.DeviceWithConfigContextStatusValueStaged {
-		//n.log.Errorf("cannot update node status in netbox")
+		n.log.Errorf("cannot update node status in netbox")
 	}
 	return nil
 }
@@ -240,9 +240,9 @@ func (n *Netbox) loadInterfaces() (err error) {
 	}
 	for _, in := range intfs {
 		var (
-			ip      net.IP
-			devices []map[string]interface{}
-			conn    map[string]interface{}
+			ip net.IP
+			//devices []map[string]interface{}
+			conn map[string]interface{}
 		)
 		if !strings.Contains(*in.Name, "PCI") &&
 			!strings.Contains(*in.Name, "NIC") &&
@@ -250,37 +250,40 @@ func (n *Netbox) loadInterfaces() (err error) {
 			strings.Contains(*in.Name, "LAG") {
 			continue
 		}
-		json.Unmarshal([]byte(*in.ConnectedEndpoints[0]), &devices)
-		for _, d := range devices {
-			device := d["device"].(map[string]interface{})
-			ip, err = n.getInterfaceIP(fmt.Sprintf("%v", d["id"]))
-			if err != nil {
-				n.log.Error(err)
-				continue
-			}
-			nic, port := n.getNicPort(*in.Name, intfs)
-
-			intf := NodeInterface{}
-			intf.Nic = nic
-			intf.PortNumber = port
-			if ip != nil {
-				intf.Connection = fmt.Sprintf("%v", device["name"])
-				intf.ConnectionIP = ip.String()
-				intf.Port = fmt.Sprintf("%v", conn["name"])
-			}
-			intf.Name = *in.Name
-			n.Data.Interfaces = append(n.Data.Interfaces, intf)
+		//json.Unmarshal([]byte(*in.ConnectedEndpoints[0]), &devices)
+		if len(in.ConnectedEndpoints) == 0 {
+			continue
 		}
+		d := in.ConnectedEndpoints[0].Device
+		if d == nil {
+			continue
+		}
+		ip, err = n.getInterfaceIP(fmt.Sprintf("%v", d.ID))
+		if err != nil {
+			n.log.Error(err)
+			continue
+		}
+		nic, port := n.getNicPort(*in.Name, intfs)
 
+		intf := NodeInterface{}
+		intf.Nic = nic
+		intf.PortNumber = port
+		if ip != nil {
+			intf.Connection = fmt.Sprintf("%v", d.Name)
+			intf.ConnectionIP = ip.String()
+			intf.Port = fmt.Sprintf("%v", conn["name"])
+		}
+		intf.Name = *in.Name
+		n.Data.Interfaces = append(n.Data.Interfaces, intf)
 	}
 	return
 }
 
-func (n *Netbox) updateNodeInfo(data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesUpdateOK, err error) {
+func (n *Netbox) updateNodeInfo(data models.WritableDeviceWithConfigContext) (p *dcim.DcimDevicesPartialUpdateOK, err error) {
 	data.DeviceType = &n.Data.Device.DeviceType.ID
 	data.DeviceRole = &n.Data.Device.DeviceRole.ID
 	data.Site = &n.Data.Device.Site.ID
-	p, err = n.client.Client.Dcim.DcimDevicesUpdate(&dcim.DcimDevicesUpdateParams{
+	p, err = n.client.Client.Dcim.DcimDevicesPartialUpdate(&dcim.DcimDevicesPartialUpdateParams{
 		ID:      n.Data.Device.ID,
 		Data:    &data,
 		Context: context.Background(),
@@ -300,12 +303,14 @@ func (n *Netbox) updateNodeInterfaces() (err error) {
 				_, err = n.client.Client.Dcim.DcimInterfacesUpdate(&dcim.DcimInterfacesUpdateParams{
 					ID: in.ID,
 					Data: &models.WritableInterface{
-						Description: nIntf.RedfishName,
-						MacAddress:  &nIntf.Mac,
-						Name:        in.Name,
-						Type:        in.Type.Value,
-						TaggedVlans: []int64{},
-						Device:      &in.Device.ID,
+						WirelessLans: []int64{},
+						Vdcs:         []int64{},
+						Description:  nIntf.RedfishName,
+						MacAddress:   &nIntf.Mac,
+						Name:         in.Name,
+						Type:         in.Type.Value,
+						TaggedVlans:  []int64{},
+						Device:       &in.Device.ID,
 					},
 					Context: context.Background(),
 				}, nil)
