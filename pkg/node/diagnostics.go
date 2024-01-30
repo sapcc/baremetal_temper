@@ -30,7 +30,7 @@ import (
 )
 
 func (n *Node) runHardwareChecks() (err error) {
-	var dellRe = regexp.MustCompile(`R640|R740|R760|R840`)
+	var dellRe = regexp.MustCompile(`R640|R740|R760|R840|XE9680`)
 
 	d, err := n.Redfish.GetData()
 	if err != nil {

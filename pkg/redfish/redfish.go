@@ -270,7 +270,7 @@ func (p *Default) getDisks() (err error) {
 		Rotational: true,
 	}
 	p.Data.Inventory.Disks = make([]Disk, 0)
-	re := regexp.MustCompile(`^(?i)(ssd|hdd)\s*(\d+)$`)
+	re := regexp.MustCompile(`^(?i)(nvme|ssd|hdd)\s*(\d+)$`)
 	for _, s := range st {
 		ds, err := s.Drives()
 		if err != nil {
